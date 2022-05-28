@@ -198,13 +198,6 @@ gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean 
     guint8 *data;
     guint32 data_len;
 
-//    if (priv->ack || priv->reply || priv->timeout) {
-//        // A command is already running.
-//        fp_warn("A command is already running: 0x%02x", priv->message->command);
-//        g_free(message);
-//        return FALSE;
-//    }
-
     fp_dbg("Running command: 0x%02x", message->command);
 
     priv->message = message;
@@ -232,4 +225,37 @@ void fpi_goodix_device_empty_buffer(FpDevice *dev) {
     while (fpi_goodix_device_receive_chunk(dev, NULL, NULL, NULL)) {
 
     }
+}
+
+gboolean fpi_goodix_device_reset(FpDevice *dev, guint8 reset_type, gboolean irq_status) {
+    guint16 payload;
+    switch (reset_type) {
+        case 0:{
+            payload = 0x001;
+            if (irq_status) {
+                payload |= 0x100;
+            }
+            payload |= 20 << 8;
+        }
+        break;
+        case 1: {
+            payload = 0b010;
+            payload |= 50 << 8;
+        }
+        break;
+        case 2: {
+            payload = 0b011;
+        }
+        break;
+    }
+    GoodixMessage *message = g_malloc0(sizeof(GoodixMessage));
+    message->category = 0xA;
+    message->command = 1;
+    message->payload_len = 2;
+    message->payload = g_malloc0(message->payload_len);
+    message->payload[0] = payload & 0xFF;
+    message->payload[1] = payload >> 8;
+
+    GError *error = NULL;
+    return fpi_goodix_device_send(dev, message, TRUE, 500, FALSE, &error);
 }

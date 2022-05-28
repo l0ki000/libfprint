@@ -40,3 +40,4 @@ void fpi_goodix_protocol_encode(GoodixMessage *message, gboolean calc_checksum, 
                                 guint8 **data, guint32 *data_len);
 gboolean fpi_goodix_protocol_decode(guint8 *data, GoodixMessage **message, GError **error);
 gboolean fpi_goodix_protocol_check_ack(GoodixMessage *message, GError **error);
+int fpi_goodix_protocol_decode_u32(guint8 *data, uint length);

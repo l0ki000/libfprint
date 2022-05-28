@@ -110,3 +110,7 @@ gboolean fpi_goodix_protocol_decode(guint8 *data, GoodixMessage **message, GErro
     return TRUE;
 }
 
+int fpi_goodix_protocol_decode_u32(guint8 *data, uint length) {
+    return data[0] * 0x100 + data[1] + data[2] * 0x1000000 + data[3] * 0x10000;
+}
+

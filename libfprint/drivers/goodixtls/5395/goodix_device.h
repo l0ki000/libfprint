@@ -44,3 +44,4 @@ gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean 
                             gboolean reply, GError **error);
 gboolean fpi_goodix_device_receive_data(FpDevice *dev, GoodixMessage **message, GError **error);
 void fpi_goodix_device_empty_buffer(FpDevice *dev);
+gboolean fpi_goodix_device_reset(FpDevice *dev, guint8 reset_type, gboolean irq_status);
