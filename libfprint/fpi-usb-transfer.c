@@ -539,7 +539,7 @@ fpi_usb_transfer_submit_sync (FpiUsbTransfer *transfer,
       g_return_val_if_reached (FALSE);
     }
 
-  log_transfer (transfer, FALSE, *error);
+//  log_transfer (transfer, FALSE, *error);
 
   if (!res)
     transfer->actual_length = -1;

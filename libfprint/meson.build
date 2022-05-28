@@ -141,6 +141,8 @@ driver_sources = {
         [ 'drivers/goodixmoc/goodix.c', 'drivers/goodixmoc/goodix_proto.c' ],
     'goodixtls511' :
         [ 'drivers/goodixtls/goodix511.c' ],
+    'goodixtls5395' :
+        [ 'drivers/goodixtls/goodix5395.c' ],
 }
 
 helper_sources = {
@@ -152,6 +154,8 @@ helper_sources = {
         [ 'drivers/aes3k.c' ],
     'goodixtls' :
         [ 'drivers/goodixtls/goodix_proto.c', 'drivers/goodixtls/goodix.c', 'drivers/goodixtls/goodixtls.c' ],
+    'goodix_device' :
+        [ 'drivers/goodixtls/5395/goodix_protocol.c', 'drivers/goodixtls/5395/goodix_device.c' ],
     'nss' :
         [ ],
     'udev' :
