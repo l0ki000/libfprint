@@ -114,3 +114,12 @@ int fpi_goodix_protocol_decode_u32(guint8 *data, uint length) {
     return data[0] * 0x100 + data[1] + data[2] * 0x1000000 + data[3] * 0x10000;
 }
 
+
+GoodixMessage *fpi_goodix_protocol_create_message(guint8 category, guint8 command, guint8 *payload, guint8 length) {
+    GoodixMessage *message = g_malloc0(sizeof(GoodixMessage));
+    message->category = category;
+    message->command = command;
+    message->payload_len = length;
+    message->payload = payload;
+    return message;
+}

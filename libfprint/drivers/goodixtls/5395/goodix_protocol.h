@@ -41,3 +41,4 @@ void fpi_goodix_protocol_encode(GoodixMessage *message, gboolean calc_checksum, 
 gboolean fpi_goodix_protocol_decode(guint8 *data, GoodixMessage **message, GError **error);
 gboolean fpi_goodix_protocol_check_ack(GoodixMessage *message, GError **error);
 int fpi_goodix_protocol_decode_u32(guint8 *data, uint length);
+GoodixMessage *fpi_goodix_protocol_create_message(guint8 category, guint8 command, guint8 *payload, guint8 length);

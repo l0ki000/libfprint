@@ -29,6 +29,8 @@
 #define FIRMWARE_VERSION_1 "GF5288_HTSEC_APP_10011"
 #define FIRMWARE_VERSION_2 "GF5288_HTSEC_APP_10020"
 
+#define GOODIX_DEVICE_ERROR_DOMAIN 1
+
 struct _FpiDeviceGoodixTls5395 {
     FpiGoodixDevice parent;
 };
@@ -44,6 +46,7 @@ enum activate_states {
   CHECK_FIRMWARE,
   DEVICE_ENABLE,
   CHECK_SENSOR,
+  CHECK_PSK,
   SETUP_FINGER_DOWN_DETECTION,
   WAITING_FOR_FINGER_DOWN,
   READING_FINGER,
@@ -63,87 +66,105 @@ static void activate_complete(FpiSsm *ssm, FpDevice *dev, GError *error) {
     }
 }
 
-static void ping(FpDevice *device, FpiSsm *ssm) {
-    fpi_goodix_device_empty_buffer(device);
-    GoodixMessage *message = malloc(sizeof(GoodixMessage));
-    message->command = 0x00;
-    message->category = 0;
-    message->payload_len = 2;
-    message->payload = g_malloc0(message->payload_len);
+#define FPI_GOODIX_DEVICE_ERROR(code, format, ...)  g_error_new(GOODIX_DEVICE_ERROR_DOMAIN, code, format, __VA_ARGS__)
+#define FAIL_SSM_WITH_RETURN(ssm, error) fpi_ssm_mark_failed(ssm, error); return;
+
+static void fpi_device_goodixtls5395_ping(FpDevice *dev, FpiSsm *ssm) {
+    fpi_goodix_device_empty_buffer(dev);
+    guint8 payload[] = {0, 0};
+    GoodixMessage *message = fpi_goodix_protocol_create_message(0, 0x00, payload, 2);
     GError *error = NULL;
-    if (fpi_goodix_device_send(device, message, TRUE, 500, FALSE, &error)) {
+    if (fpi_goodix_device_send(dev, message, TRUE, 500, FALSE, &error)) {
         fpi_ssm_next_state(ssm);
     } else {
         fpi_ssm_mark_failed(ssm, error);
     }
 }
 
-static void device_enable(FpDevice *device, FpiSsm *ssm) {
-    fpi_goodix_device_reset(device, 0, FALSE);
-    GoodixMessage *enable_message = g_malloc0(sizeof(GoodixMessage));
-    enable_message->category = 0x8;
-    enable_message->command = 0x1;
-    enable_message->payload_len = 4;
-    enable_message->payload = g_malloc0(enable_message->payload_len);
-    enable_message->payload[0] = 0;
-    enable_message->payload[1] = 0;
-    enable_message->payload[2] = 0;
-    enable_message->payload[3] = 4;
+static void fpi_device_goodixtls5395_device_enable(FpDevice *dev, FpiSsm *ssm) {
+    fpi_goodix_device_reset(dev, 0, FALSE);
+    guint8 payload[] = {0, 0, 0, 4};
+    GoodixMessage *enable_message = fpi_goodix_protocol_create_message(0x8, 0x1, payload, 4);
 
     GError *error = NULL;
-    if (fpi_goodix_device_send(device, enable_message, TRUE, 500, FALSE, &error)) {
-        GoodixMessage *receive_message = NULL;
-        if (fpi_goodix_device_receive_data(device, &receive_message, &error)) {
-            if (receive_message->category != 0x8 || receive_message->command != 0x1) {
-                fpi_ssm_mark_failed(ssm, g_error_new(1, 1, "Not a register read message"));
-            } else {
-                int chip_id = fpi_goodix_protocol_decode_u32(receive_message->payload, receive_message->payload_len);
-                if (chip_id >> 8 != 0x220C) {
-                    fpi_ssm_mark_failed(ssm, g_error_new(1, 1, "Unsupported chip ID"));
-                } else {
-                    fpi_ssm_next_state(ssm);
-                }
-                g_free(receive_message);
-            }
-        } else {
-            fpi_ssm_mark_failed(ssm, error);
-        }
+    if (!fpi_goodix_device_send(dev, enable_message, TRUE, 500, FALSE, &error)) {
+        FAIL_SSM_WITH_RETURN(ssm, error)
+    }
 
+    GoodixMessage *receive_message = NULL;
+    if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
+        FAIL_SSM_WITH_RETURN(ssm, error)
+    }
+
+    if (receive_message->category == 0x8 && receive_message->command == 0x1) {
+        int chip_id = fpi_goodix_protocol_decode_u32(receive_message->payload, receive_message->payload_len);
+        if (chip_id >> 8 != 0x220C) {
+            fpi_ssm_mark_failed(ssm, FPI_GOODIX_DEVICE_ERROR(1, "Unsupported chip ID %x", chip_id));
+        } else {
+            fpi_ssm_next_state(ssm);
+        }
+    } else {
+        fpi_ssm_mark_failed(ssm, FPI_GOODIX_DEVICE_ERROR(1, "Not a register read message for command %02x", receive_message->command));
+    }
+    g_free(receive_message);
+
+}
+
+static void fpi_device_goodixtls5395_check_firmware_version(FpDevice *dev, FpiSsm *ssm) {
+    fp_dbg("Check Firmware");
+    guint8 payload[] = {0x0, 0x0};
+    GoodixMessage *message = fpi_goodix_protocol_create_message(0xA, 4, payload, 2);
+    GError *error = NULL;
+
+    if(!fpi_goodix_device_send(dev, message, TRUE, 500, FALSE, &error)) {
+        FAIL_SSM_WITH_RETURN(ssm, error)
+    }
+
+    GoodixMessage *receive_message = NULL;
+    if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
+        FAIL_SSM_WITH_RETURN(ssm, error)
+    }
+
+    if (receive_message->category == 0xA && receive_message->command == 4) {
+        g_autofree gchar *fw_version = g_strndup(receive_message->payload, receive_message->payload_len);
+        if (g_strcmp0(fw_version, FIRMWARE_VERSION_1) == 0 || g_strcmp0(fw_version, FIRMWARE_VERSION_2) == 0) {
+            fpi_ssm_next_state(ssm);
+        } else {
+            fpi_ssm_mark_failed(ssm, FPI_GOODIX_DEVICE_ERROR(10, "Firmware %s version is not supported.", fw_version));
+        }
     } else {
         fpi_ssm_mark_failed(ssm, error);
     }
 
+    g_free(receive_message);
 }
 
-static void fpi_goodix_device_check_firmware_version(FpDevice *dev, FpiSsm *ssm) {
-    fp_dbg("Check Firmware");
-    GoodixMessage *message = malloc(sizeof(GoodixMessage));
-    message->command = 4;
-    message->category = 0xA;
-    message->payload_len = 2;
-    message->payload = g_malloc0(message->payload_len);
-    GError *error = NULL;
+static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
+    fp_dbg("Check sensor");
+    guint8 payload[] = {0x0, 0x0};
+    GoodixMessage *check_message = fpi_goodix_protocol_create_message(0xA, 0x3, payload, 2);
 
-    if(fpi_goodix_device_send(dev, message, TRUE, 500, FALSE, &error)) {
-        GoodixMessage *receive_message = NULL;
-        if (fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
-            if (receive_message->category != 0xA || receive_message->command != 4) {
-                fpi_ssm_mark_failed(ssm, error);
-                g_free(receive_message);
-                return;
-            }
-            g_autofree gchar *fw_version = g_strndup(receive_message->payload, receive_message->payload_len);
-            g_free(receive_message);
-            if (g_strcmp0(fw_version, FIRMWARE_VERSION_1) == 0 || g_strcmp0(fw_version, FIRMWARE_VERSION_2) == 0) {
-                fpi_ssm_next_state(ssm);
-            } else {
-                fpi_ssm_mark_failed(ssm, g_error_new(11, 10, "Firmware version is not supported."));
-            }
-        } else {
-            fpi_ssm_mark_failed(ssm, error);
-        }
+    GError *error = NULL;
+    if (!fpi_goodix_device_send(dev, check_message, TRUE, 500, FALSE, &error)) {
+        FAIL_SSM_WITH_RETURN(ssm, error)
     }
 
+    GoodixMessage *receive_message = NULL;
+    if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
+        FAIL_SSM_WITH_RETURN(ssm, error)
+    }
+
+    if (receive_message->category == 0xA && receive_message->command == 0x3) {
+        fp_dbg("OTP: %s", fpi_goodix_protocol_data_to_str(receive_message->payload, receive_message->payload_len));
+        fpi_ssm_next_state(ssm);
+    } else {
+        fpi_ssm_mark_failed(ssm, FPI_GOODIX_DEVICE_ERROR(1, "Not a register read message for command %02x", receive_message->command));
+    }
+    g_free(receive_message);
+}
+
+static void fpi_device_goodixtls5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
+    fp_dbg("Check PSK");
 }
 
 static void activate_run_state(FpiSsm *ssm, FpDevice *dev) {
@@ -152,19 +173,23 @@ static void activate_run_state(FpiSsm *ssm, FpDevice *dev) {
   switch (fpi_ssm_get_cur_state(ssm)) {
     case INIT_DEVICE:
 
-        ping(dev, ssm);
+        fpi_device_goodixtls5395_ping(dev, ssm);
       break;
 
       case CHECK_FIRMWARE:
-          fpi_goodix_device_check_firmware_version(dev, ssm);
+          fpi_device_goodixtls5395_check_firmware_version(dev, ssm);
           break;
 
       case DEVICE_ENABLE:
-          device_enable(dev, ssm);
+          fpi_device_goodixtls5395_device_enable(dev, ssm);
           break;
 
       case CHECK_SENSOR:
-          fp_dbg("Check sensor");
+          fpi_device_goodixtls5395_check_sensor(dev, ssm);
+          break;
+
+      case CHECK_PSK:
+          fpi_device_goodixtls5395_check_psk(dev, ssm);
           break;
 
 //    case ACTIVATE_NOP:
@@ -205,7 +230,7 @@ static void activate_run_state(FpiSsm *ssm, FpDevice *dev) {
 
 // ---- DEV SECTION START ----
 
-static void init_device(FpImageDevice *img_dev) {
+static void fpi_device_goodixtls5395_init_device(FpImageDevice *img_dev) {
   FpDevice *dev = FP_DEVICE(img_dev);
   GError *error = NULL;
 
@@ -217,7 +242,7 @@ static void init_device(FpImageDevice *img_dev) {
   fpi_image_device_open_complete(img_dev, NULL);
 }
 
-static void deinit_device(FpImageDevice *img_dev) {
+static void fpi_device_goodixtls5395_deinit_device(FpImageDevice *img_dev) {
   FpDevice *dev = FP_DEVICE(img_dev);
   GError *error = NULL;
 
@@ -229,16 +254,16 @@ static void deinit_device(FpImageDevice *img_dev) {
   fpi_image_device_close_complete(img_dev, NULL);
 }
 
-static void activate_device(FpImageDevice *img_dev) {
+static void fpi_device_goodixtls5395_activate_device(FpImageDevice *img_dev) {
   FpDevice *dev = FP_DEVICE(img_dev);
 
   fpi_ssm_start(fpi_ssm_new(dev, activate_run_state, ACTIVATE_NUM_STATES),
                 activate_complete);
 }
 
-static void dev_change_state(FpImageDevice *img_dev, FpiImageDeviceState state) {}
+static void fpi_device_goodixtls5395_change_state(FpImageDevice *img_dev, FpiImageDeviceState state) {}
 
-static void deactivate_device(FpImageDevice *img_dev) {
+static void fpi_device_goodixtls5395_deactivate_device(FpImageDevice *img_dev) {
   fpi_image_device_deactivate_complete(img_dev, NULL);
 }
 
@@ -269,11 +294,11 @@ static void fpi_device_goodixtls5395_class_init(
     image_device_class->img_width = 88;
     image_device_class->img_height = 108;
 
-    image_device_class->img_open = init_device;
-    image_device_class->img_close = deinit_device;
-    image_device_class->activate = activate_device;
-    image_device_class->change_state = dev_change_state;
-    image_device_class->deactivate = deactivate_device;
+    image_device_class->img_open = fpi_device_goodixtls5395_init_device;
+    image_device_class->img_close = fpi_device_goodixtls5395_deinit_device;
+    image_device_class->activate = fpi_device_goodixtls5395_activate_device;
+    image_device_class->change_state = fpi_device_goodixtls5395_change_state;
+    image_device_class->deactivate = fpi_device_goodixtls5395_deactivate_device;
 
     fpi_device_class_auto_initialize_features(device_class);
     device_class->features &= ~FP_DEVICE_FEATURE_VERIFY;
