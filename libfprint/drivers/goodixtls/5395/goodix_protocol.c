@@ -123,3 +123,20 @@ GoodixMessage *fpi_goodix_protocol_create_message(guint8 category, guint8 comman
     message->payload = payload;
     return message;
 }
+
+static guint8 fpi_goodix_device_compute_otp_hash(const guint8 *otp, guint otp_length, const guint8 otp_hash[]) {
+    guint8 checksum = 0;
+    for (guint i = 0; i < otp_length; i++) {
+        if (i == 25) {
+            continue;
+        }
+        checksum = otp_hash[checksum ^ otp[i]];
+    }
+    return ~checksum & 0xFF;
+}
+
+gboolean fpi_goodix_device_verify_otp_hash(const guint8 *otp, guint otp_length, const guint8 otp_hash[]) {
+    guint8 received_hash = otp[25];
+    guint8 computed_hash = fpi_goodix_device_compute_otp_hash(otp, otp_length - 1, otp_hash);
+    return received_hash == computed_hash;
+}
