@@ -34,6 +34,12 @@ typedef struct __attribute__((__packed__)) _GoodixMessage {
     guint payload_len;
 } GoodixMessage;
 
+typedef struct __attribute__((__packed__)) _GoodixProductionRead {
+    guint8 status;
+    guint32 message_read_type;
+    guint32 payload_size;
+} GoodixProductionRead;
+
 gchar *fpi_goodix_protocol_data_to_str(guint8 *data, guint32 length);
 
 void fpi_goodix_protocol_encode(GoodixMessage *message, gboolean calc_checksum, gboolean pad_data,

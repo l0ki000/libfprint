@@ -161,7 +161,7 @@ static void fpi_device_goodixtls5395_check_firmware_version(FpDevice *dev, FpiSs
 }
 
 static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
-    FpiGoodixDeviceClass *self = FPI_GOODIX_DEVICE_CLASS(dev);
+    FpiGoodixDeviceClass *self = FPI_GOODIX_DEVICE_GET_CLASS(dev);
     fp_dbg("Check sensor");
     guint8 payload[] = {0x0, 0x0};
     GoodixMessage *check_message = fpi_goodix_protocol_create_message(0xA, 0x3, payload, 2);
@@ -255,11 +255,25 @@ static void fpi_device_goodixtls5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
     }
 
     if (receive_message->category == 0xE && receive_message->command == 2) {
-        if (receive_message->payload[0] != 0x00) {
-            FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Not a production read reply for command %02x", receive_message->command));
+
+        GoodixProductionRead *read_structure = (GoodixProductionRead *) receive_message->payload;
+
+        if (read_structure->status != 0x00) {
+            FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Not a production read reply for command %02x", receive_message->command))
         }
 
+        if (read_structure->message_read_type != 0xb003) {
+            FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Wrong read type in reply, expected: %02x, received: %02x", 0xb003, read_structure->message_read_type))
+        }
 
+        if (read_structure->payload_size != receive_message->payload_len - sizeof(GoodixProductionRead) - 1) {
+            FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Payload does not match reported size: %lu != %d", receive_message->payload_len - sizeof(GoodixProductionRead), read_structure->payload_size))
+        }
+
+        fp_dbg("Payload is %s", fpi_goodix_protocol_data_to_str(receive_message->payload + sizeof(GoodixProductionRead), read_structure->payload_size));
+
+        //TODO: needs check PSK hashes
+        //psk_hash == SHA256.SHA256Hash(PSK).digest()
     } else {
         fpi_ssm_mark_failed(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Not read reply for command %02x", receive_message->command));
     }
