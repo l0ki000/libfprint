@@ -25,6 +25,24 @@ G_DECLARE_DERIVABLE_TYPE(FpiGoodixDevice, fpi_goodix_device, FPI, GOODIX_DEVICE,
 
 #define FPI_TYPE_GOODIX_DEVICE (fpi_goodix_device_get_type())
 
+typedef struct __attribute__((__packed__)) _GoodixCalibrationParam{
+    guint8 tcode;
+    guint8 delta_fdt;
+    guint8 delta_down;
+    guint8 delta_up;
+    guint8 delta_img;
+    guint8 delta_nav;
+    guint8 dac_h;
+    guint8 dac_l;
+    guint8 dac_delta;
+    guint8 *fdt_base_down;
+    guint8 *fdt_base_up;
+    guint8 *fdt_base_manual;
+
+    guint8 *calib_image;
+
+
+} GoodixCalibrationParam;
 
 struct _FpiGoodixDeviceClass
 {
@@ -33,6 +51,7 @@ struct _FpiGoodixDeviceClass
     gint interface;
     guint8 ep_in;
     guint8 ep_out;
+    GoodixCalibrationParam *calibration_params;
 };
 
 typedef void (*GoodixDeviceReceiveCallback)(FpDevice *dev, GoodixMessage *message, GError *error);

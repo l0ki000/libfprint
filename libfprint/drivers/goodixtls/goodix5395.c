@@ -30,6 +30,7 @@
 #define FIRMWARE_VERSION_2 "GF5288_HTSEC_APP_10020"
 
 #define GOODIX_DEVICE_ERROR_DOMAIN 1
+#define FDT_BASE_LEN 24
 
 const guint8 goodix_5395_otp_hash[] = {
         0x00, 0x07, 0x0e, 0x09, 0x1c, 0x1b, 0x12, 0x15, 0x38, 0x3f, 0x36, 0x31, 0x24, 0x23, 0x2a, 0x2d,
@@ -50,28 +51,10 @@ const guint8 goodix_5395_otp_hash[] = {
         0xde, 0xd9, 0xd0, 0xd7, 0xc2, 0xc5, 0xcc, 0xcb, 0xe6, 0xe1, 0xe8, 0xef, 0xfa, 0xfd, 0xf4, 0xf3
 };
 
+
 struct _FpiDeviceGoodixTls5395 {
     FpiGoodixDevice parent;
 };
-
-typedef struct __attribute__((__packed__)) _CalibrationParam{
-    guint8 tcode;
-    guint8 delta_fdt;
-    guint8 delta_down;
-    guint8 delta_up;
-    guint8 delta_img;
-    guint8 delta_nav;
-    guint8 dac_h;
-    guint8 dac_l;
-    guint8 dac_delta;
-    guint8 *fdt_base_down;
-    guint8 *fdt_base_up;
-    guint8 *fdt_base_manual;
-
-    guint8 *calib_image;
-
-
-} CalibrationParam;
 
 G_DECLARE_FINAL_TYPE(FpiDeviceGoodixTls5395, fpi_device_goodixtls5395, FPI, DEVICE_GOODIXTLS5395, FpiGoodixDevice);
 
@@ -91,7 +74,7 @@ enum activate_states {
   WAITING_FOR_FINGER_UP,
   SET_UP_SLEEP_MODE,
   POWER_OFF_SENSOR,
-  ACTIVATE_NUM_STATES,
+  DEVICE_INIT_NUM_STATES,
 };
 
 static void activate_complete(FpiSsm *ssm, FpDevice *dev, GError *error) {
@@ -178,6 +161,7 @@ static void fpi_device_goodixtls5395_check_firmware_version(FpDevice *dev, FpiSs
 }
 
 static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
+    FpiGoodixDeviceClass *self = FPI_GOODIX_DEVICE_CLASS(dev);
     fp_dbg("Check sensor");
     guint8 payload[] = {0x0, 0x0};
     GoodixMessage *check_message = fpi_goodix_protocol_create_message(0xA, 0x3, payload, 2);
@@ -205,38 +189,48 @@ static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
         fp_dbg("[0x11]:%02x, diff[5:1]=%02x", otp[0x11], diff);
         guint8 tcode = otp[23] != 0 ? otp[23] + 1 : 0;
 
-        guint8 delta_fdt = 0;
-        guint8 delta_down = 0xD;
-        guint8 delta_up = 0xB;
-        guint8 delta_img = 0xC8;
-        guint8 delta_nav = 0x28;
+        GoodixCalibrationParam *params = g_malloc0(sizeof(GoodixCalibrationParam));
 
-        guint8 dac_h = (otp[17] << 8 ^ otp[22]) & 0x1FF;
-        guint8 dac_l = (otp[17] & 0x40) << 2 ^ otp[31];
+        params->delta_fdt = 0;
+        params->delta_down = 0xD;
+        params->delta_up = 0xB;
+        params->delta_img = 0xC8;
+        params->delta_nav = 0x28;
+
+        params->dac_h = (otp[17] << 8 ^ otp[22]) & 0x1FF;
+        params->dac_l = (otp[17] & 0x40) << 2 ^ otp[31];
 
         if (diff != 0) {
             guint8 tmp = diff + 5;
             guint8 tmp2 = (tmp * 0x32) >> 4;
 
-            delta_fdt = tmp2 / 5;
-            delta_down = tmp2 / 3;
-            delta_up = delta_down - 2;
-            delta_img = 0xC8;
-            delta_nav = tmp * 4;
+            params->delta_fdt = tmp2 / 5;
+            params->delta_down = tmp2 / 3;
+            params->delta_up = params->delta_down - 2;
+            params->delta_img = 0xC8;
+            params->delta_nav = tmp * 4;
         }
 
         if (otp[17] == 0 || otp[22] == 0 || otp[31] == 0) {
-            dac_h = 0x97;
-            dac_l = 0xD0;
+            params->dac_h = 0x97;
+            params->dac_l = 0xD0;
         }
 
-        fp_dbg("tcode:%02x delta down:%02x", tcode, delta_down);
-        fp_dbg("delta up:%02x delta img:%02x", delta_up, delta_img);
-        fp_dbg("delta nav:%02x dac_h:%02x dac_l:%02x", delta_nav, dac_h, dac_l);
+        fp_dbg("tcode:%02x delta down:%02x", tcode, params->delta_down);
+        fp_dbg("delta up:%02x delta img:%02x", params->delta_up, params->delta_img);
+        fp_dbg("delta nav:%02x dac_h:%02x dac_l:%02x", params->delta_nav, params->dac_h, params->dac_l);
 
-        guint8 dac_delta = 0xC83 / tcode;
-        fp_dbg("sensor broken dac_delta=%02x", dac_delta);
-        //TODO: prepare CalibrationParam
+        params->dac_delta = 0xC83 / tcode;
+        fp_dbg("sensor broken dac_delta=%02x", params->dac_delta);
+
+        //TODO: maybe it needs to allocate fdt_base for all variable
+        guint8 *fdt_base = g_malloc0(FDT_BASE_LEN);
+
+        params->fdt_base_down = fdt_base;
+        params->fdt_base_up = fdt_base;
+        params->fdt_base_manual = fdt_base;
+
+        self->calibration_params = params;
 
         fpi_ssm_next_state(ssm);
     } else {
@@ -247,6 +241,28 @@ static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
 
 static void fpi_device_goodixtls5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
     fp_dbg("Check PSK");
+    guint8 payload[] = {0x03, 0xb0, 0x00, 0x00};
+    GoodixMessage *check_psk_message = fpi_goodix_protocol_create_message(0xE, 2, payload, 4);
+
+    GError *error = NULL;
+    if (!fpi_goodix_device_send(dev, check_psk_message, TRUE, 500, FALSE, &error)) {
+        FAIL_SSM_WITH_RETURN(ssm, error)
+    }
+
+    GoodixMessage *receive_message = NULL;
+    if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
+        FAIL_SSM_WITH_RETURN(ssm, error)
+    }
+
+    if (receive_message->category == 0xE && receive_message->command == 2) {
+        if (receive_message->payload[0] != 0x00) {
+            FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Not a production read reply for command %02x", receive_message->command));
+        }
+
+
+    } else {
+        fpi_ssm_mark_failed(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Not read reply for command %02x", receive_message->command));
+    }
 }
 
 static void activate_run_state(FpiSsm *ssm, FpDevice *dev) {
@@ -339,7 +355,7 @@ static void fpi_device_goodixtls5395_deinit_device(FpImageDevice *img_dev) {
 static void fpi_device_goodixtls5395_activate_device(FpImageDevice *img_dev) {
   FpDevice *dev = FP_DEVICE(img_dev);
 
-  fpi_ssm_start(fpi_ssm_new(dev, activate_run_state, ACTIVATE_NUM_STATES),
+  fpi_ssm_start(fpi_ssm_new(dev, activate_run_state, DEVICE_INIT_NUM_STATES),
                 activate_complete);
 }
 
