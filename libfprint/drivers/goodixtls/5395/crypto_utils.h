@@ -16,4 +16,4 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-void crypto_utils_sha256_hash(const guint8 *data, const guint length, guint8 **result_hash, guint *result_length);
+void crypto_utils_sha256_hash(const guint8 *data, const guint length, guint8 *result_hash, guint result_length);

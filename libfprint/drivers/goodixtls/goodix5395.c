@@ -282,9 +282,9 @@ static void fpi_device_goodixtls5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
         fp_dbg("psk is %s", fpi_goodix_protocol_data_to_str(received_psk, read_structure->payload_size));
 
         guint8 *psk = g_malloc0(32);
-        guint8 *calculated_sha256;
-        guint calculated_length;
-        crypto_utils_sha256_hash(psk, 32, &calculated_sha256, &calculated_length);
+        guint8 *calculated_sha256 = g_malloc0(32);
+        guint calculated_length = 0;
+        crypto_utils_sha256_hash(psk, 32, calculated_sha256, calculated_length);
         fp_dbg("Calculated psk: %s", fpi_goodix_protocol_data_to_str(calculated_sha256, calculated_length));
         class->is_psk_valid = memcmp(received_psk, calculated_sha256, calculated_length) == 0;
 

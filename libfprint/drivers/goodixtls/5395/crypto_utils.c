@@ -21,10 +21,10 @@
 
 #include <openssl/sha.h>
 
-void crypto_utils_sha256_hash(const guint8 *data, const guint length, guint8 **result_hash, guint *result_length) {
+void crypto_utils_sha256_hash(const guint8 *data, const guint length, guint8 *result_hash, guint result_length) {
     SHA256_CTX sha256;
     SHA256_Init(&sha256);
     SHA256_Update(&sha256, data, length);
-    SHA256_Final(*result_hash, &sha256);
-    *result_length = SHA256_DIGEST_LENGTH;
+    SHA256_Final(result_hash, &sha256);
+    result_length = SHA256_DIGEST_LENGTH;
 }
