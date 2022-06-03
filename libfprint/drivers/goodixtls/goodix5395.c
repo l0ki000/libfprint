@@ -305,7 +305,7 @@ static void fpi_device_goodixtls5395_write_psk(FpDevice *dev, FpiSsm *ssm) {
     const gint psk_white_box_length = sizeof(goodix5395_psk_white_box);
     guint8 payload[5 + psk_white_box_length];
     payload[0] = 0x02;
-    payload[0] = 0xb0;
+    payload[1] = 0xb0;
     payload[4] = psk_white_box_length;
 
     memcpy(payload + 5, goodix5395_psk_white_box, psk_white_box_length);
