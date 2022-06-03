@@ -51,6 +51,12 @@ const guint8 goodix_5395_otp_hash[] = {
         0xde, 0xd9, 0xd0, 0xd7, 0xc2, 0xc5, 0xcc, 0xcb, 0xe6, 0xe1, 0xe8, 0xef, 0xfa, 0xfd, 0xf4, 0xf3
 };
 
+const guint8 goodix5395_psk_white_box[] = {
+        0xec, 0x35, 0xae, 0x3a, 0xbb, 0x45, 0xed, 0x3f, 0x12, 0xc4, 0x75, 0x1f, 0x1e, 0x5c, 0x2c, 0xc0, 0x5b, 0x3c, 0x54, 0x52, 0xe9, 0x10, 0x4d, 0x9f, 0x2a, 0x31, 0x18, 0x64, 0x4f, 0x37, 0xa0, 0x4b,
+        0x6f, 0xd6, 0x6b, 0x1d, 0x97, 0xcf, 0x80, 0xf1, 0x34, 0x5f, 0x76, 0xc8, 0x4f, 0x03, 0xff, 0x30, 0xbb, 0x51, 0xbf, 0x30, 0x8f, 0x2a, 0x98, 0x75, 0xc4, 0x1e, 0x65, 0x92, 0xcd, 0x2a, 0x2f, 0x9e,
+        0x60, 0x80, 0x9b, 0x17, 0xb5, 0x31, 0x60, 0x37, 0xb6, 0x9b, 0xb2, 0xfa, 0x5d, 0x4c, 0x8a, 0xc3, 0x1e, 0xdb, 0x33, 0x94, 0x04, 0x6e, 0xc0, 0x6b, 0xbd, 0xac, 0xc5, 0x7d, 0xa6, 0xa7, 0x56, 0xc5
+};
+
 
 struct _FpiDeviceGoodixTls5395 {
     FpiGoodixDevice parent;
@@ -296,7 +302,34 @@ static void fpi_device_goodixtls5395_write_psk(FpDevice *dev, FpiSsm *ssm) {
         return;
     }
     fp_dbg("Write PSK");
-    //TODO: needs to update psk on device
+    const gint psk_white_box_length = sizeof(goodix5395_psk_white_box);
+    guint8 payload[5 + psk_white_box_length];
+    payload[0] = 0x02;
+    payload[0] = 0xb0;
+    payload[4] = psk_white_box_length;
+
+    memcpy(payload + 5, goodix5395_psk_white_box, psk_white_box_length);
+    GoodixMessage *write_psk_message = fpi_goodix_protocol_create_message(0xE, 1, payload, sizeof(payload));
+
+    GError *error = NULL;
+    if (!fpi_goodix_device_send(dev, write_psk_message, TRUE, 500, FALSE, &error)) {
+        FAIL_SSM_WITH_RETURN(ssm, error)
+    }
+
+    GoodixMessage *receive_message = NULL;
+    if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
+        FAIL_SSM_WITH_RETURN(ssm, error)
+    }
+
+    if (receive_message->category != 0xE || receive_message->command != 1) {
+        FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(WRITE_PSK, "Not a production write reply command: 0%02x", receive_message->command))
+    }
+
+    if (receive_message->payload[0] != 0) {
+        FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(WRITE_PSK, "Production write MCU failed. Command: 0%02x", receive_message->command))
+    } else {
+        fpi_ssm_next_state(ssm);
+    }
 }
 
 static void activate_run_state(FpiSsm *ssm, FpDevice *dev) {
