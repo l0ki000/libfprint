@@ -1,7 +1,6 @@
-// Goodix Tls driver for libfprint
+// Goodix 5395 driver for libfprint
 
-// Copyright (C) 2021 Alexander Meiler <alex.meiler@protonmail.com>
-// Copyright (C) 2021 Matthieu CHARETTE <matthieu.charette@gmail.com>
+// Copyright (C) 2022 Anton Turko <anton.turko@proton.me>
 
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -25,6 +24,7 @@
 
 #include "5395/goodix_device.h"
 #include "goodix5395.h"
+#include "5395/crypto_utils.h"
 
 #define FIRMWARE_VERSION_1 "GF5288_HTSEC_APP_10011"
 #define FIRMWARE_VERSION_2 "GF5288_HTSEC_APP_10020"
@@ -68,6 +68,7 @@ enum activate_states {
   DEVICE_ENABLE,
   CHECK_SENSOR,
   CHECK_PSK,
+  WRITE_PSK,
   SETUP_FINGER_DOWN_DETECTION,
   WAITING_FOR_FINGER_DOWN,
   READING_FINGER,
@@ -241,6 +242,7 @@ static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
 
 static void fpi_device_goodixtls5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
     fp_dbg("Check PSK");
+    FpiGoodixDeviceClass *class = FPI_GOODIX_DEVICE_GET_CLASS(dev);
     guint8 payload[] = {0x03, 0xb0, 0x00, 0x00};
     GoodixMessage *check_psk_message = fpi_goodix_protocol_create_message(0xE, 2, payload, 4);
 
@@ -270,13 +272,31 @@ static void fpi_device_goodixtls5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
             FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Payload does not match reported size: %lu != %d", receive_message->payload_len - sizeof(GoodixProductionRead), read_structure->payload_size))
         }
 
-        fp_dbg("Payload is %s", fpi_goodix_protocol_data_to_str(receive_message->payload + sizeof(GoodixProductionRead), read_structure->payload_size));
+        guint8 *received_psk = receive_message->payload + sizeof(GoodixProductionRead);
+        fp_dbg("psk is %s", fpi_goodix_protocol_data_to_str(received_psk, read_structure->payload_size));
 
-        //TODO: needs check PSK hashes
-        //psk_hash == SHA256.SHA256Hash(PSK).digest()
+        guint8 *psk = g_malloc0(32);
+        guint8 *calculated_sha256;
+        guint calculated_length;
+        crypto_utils_sha256_hash(psk, 32, &calculated_sha256, &calculated_length);
+        fp_dbg("Calculated psk: %s", fpi_goodix_protocol_data_to_str(calculated_sha256, calculated_length));
+        class->is_psk_valid = memcmp(received_psk, calculated_sha256, calculated_length) == 0;
+
+        fpi_ssm_next_state(ssm);
     } else {
         fpi_ssm_mark_failed(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Not read reply for command %02x", receive_message->command));
     }
+}
+
+static void fpi_device_goodixtls5395_write_psk(FpDevice *dev, FpiSsm *ssm) {
+    FpiGoodixDeviceClass *class = FPI_GOODIX_DEVICE_GET_CLASS(dev);
+    if (class->is_psk_valid) {
+        fp_dbg("PSKs are%s equal", class->is_psk_valid ? "": " not");
+        fpi_ssm_next_state(ssm);
+        return;
+    }
+    fp_dbg("Write PSK");
+    //TODO: needs to update psk on device
 }
 
 static void activate_run_state(FpiSsm *ssm, FpDevice *dev) {
@@ -302,6 +322,10 @@ static void activate_run_state(FpiSsm *ssm, FpDevice *dev) {
 
       case CHECK_PSK:
           fpi_device_goodixtls5395_check_psk(dev, ssm);
+          break;
+
+      case WRITE_PSK:
+          fpi_device_goodixtls5395_write_psk(dev, ssm);
           break;
 
 //    case ACTIVATE_NOP:
