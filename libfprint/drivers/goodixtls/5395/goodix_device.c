@@ -89,7 +89,7 @@ static void fpi_goodix_device_class_init(FpiGoodixDeviceClass *class) { }
 
 // ----- METHODS -----
 
-static gboolean fpi_goodix_device_receive_chunk(FpDevice *dev, GByteArray *data, glong *length, GError **error) {
+static gboolean fpi_goodix_device_receive_chunk(FpDevice *dev, GByteArray *data, GError **error) {
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDeviceClass *class = FPI_GOODIX_DEVICE_GET_CLASS(self);
     FpiUsbTransfer *transfer = fpi_usb_transfer_new(dev);
@@ -106,30 +106,29 @@ static gboolean fpi_goodix_device_receive_chunk(FpDevice *dev, GByteArray *data,
 
     if (success) {
         g_byte_array_append(data, transfer->buffer, transfer->actual_length);
-        *length = transfer->actual_length;
-        fp_dbg("Received chunk %s", fpi_goodix_protocol_data_to_str(data->data, data->len));
+        fp_dbg("Received chunk %s", fpi_goodix_protocol_data_to_str(transfer->buffer, transfer->actual_length));
     }
     fpi_usb_transfer_unref(transfer);
     return success;
 }
 
 gboolean fpi_goodix_device_receive_data(FpDevice *dev, GoodixMessage **message, GError **error) {
-    GByteArray *buffer = g_byte_array_new() ;
-    glong length = 0;
+    GByteArray *buffer = g_byte_array_new();
     glong message_length = 0;
     guint chunk_count = 1;
 
-    if (fpi_goodix_device_receive_chunk(dev, buffer, &length, error)) {
+    if (fpi_goodix_device_receive_chunk(dev, buffer, error)) {
         GoodixDevicePack *pack = (GoodixDevicePack *) buffer->data;
         message_length = pack->length;
     } else {
         return FALSE;
     }
 
-    while (length - 1 < message_length) {
+    while (buffer->len - 1 < message_length) {
         chunk_count++;
-        fpi_goodix_device_receive_chunk(dev, buffer, &length, error);
+        fpi_goodix_device_receive_chunk(dev, buffer, error);
     }
+    fp_dbg("complete mess: %s", fpi_goodix_protocol_data_to_str(buffer->data, buffer->len));
     gboolean success = fpi_goodix_protocol_decode(buffer->data, message, error);
     g_byte_array_free(buffer, TRUE);
     return success;
@@ -220,7 +219,7 @@ gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean 
 }
 
 void fpi_goodix_device_empty_buffer(FpDevice *dev) {
-    while (fpi_goodix_device_receive_chunk(dev, NULL, NULL, NULL)) {
+    while (fpi_goodix_device_receive_chunk(dev, NULL, NULL)) {
 
     }
 }
