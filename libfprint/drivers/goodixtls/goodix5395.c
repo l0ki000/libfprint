@@ -332,6 +332,14 @@ static void fpi_device_goodixtls5395_write_psk(FpDevice *dev, FpiSsm *ssm) {
     }
 }
 
+void fpi_device_goodixtls5395_setup_finger_down_detection(FpDevice *dev, FpiSsm *ssm){
+    GError *error = NULL;
+    if(!fpi_goodix_device_gtls_connection(dev, error)){
+        FAIL_SSM_WITH_RETURN(ssm, error)
+        fp_dbg("Error!");
+    }
+}
+
 static void activate_run_state(FpiSsm *ssm, FpDevice *dev) {
   GError *error = NULL;
 
@@ -360,7 +368,9 @@ static void activate_run_state(FpiSsm *ssm, FpDevice *dev) {
       case WRITE_PSK:
           fpi_device_goodixtls5395_write_psk(dev, ssm);
           break;
-
+        case SETUP_FINGER_DOWN_DETECTION:
+        fpi_device_goodixtls5395_setup_finger_down_detection(dev, ssm);
+        break;
 //    case ACTIVATE_NOP:
 //      goodix_send_nop(dev, check_none, ssm);
 //      break;
