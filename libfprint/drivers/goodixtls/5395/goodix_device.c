@@ -89,7 +89,7 @@ static void fpi_goodix_device_class_init(FpiGoodixDeviceClass *class) { }
 
 // ----- METHODS -----
 
-static gboolean fpi_goodix_device_receive_chunk(FpDevice *dev, guint8 **data, glong *length, GError **error) {
+static gboolean fpi_goodix_device_receive_chunk(FpDevice *dev, GByteArray *data, glong *length, GError **error) {
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDeviceClass *class = FPI_GOODIX_DEVICE_GET_CLASS(self);
     FpiUsbTransfer *transfer = fpi_usb_transfer_new(dev);
@@ -105,22 +105,22 @@ static gboolean fpi_goodix_device_receive_chunk(FpDevice *dev, guint8 **data, gl
     }
 
     if (success) {
-        memcpy(*data, transfer->buffer, transfer->actual_length);
+        g_byte_array_append(data, transfer->buffer, transfer->actual_length);
         *length = transfer->actual_length;
-        fp_dbg("Received chunk %s", fpi_goodix_protocol_data_to_str(*data, *length));
+        fp_dbg("Received chunk %s", fpi_goodix_protocol_data_to_str(data->data, data->len));
     }
     fpi_usb_transfer_unref(transfer);
     return success;
 }
 
 gboolean fpi_goodix_device_receive_data(FpDevice *dev, GoodixMessage **message, GError **error) {
-    guint8 *data = g_malloc0( GOODIX_EP_IN_MAX_BUF_SIZE);
+    GByteArray *buffer = g_byte_array_new() ;
     glong length = 0;
     glong message_length = 0;
     guint chunk_count = 1;
 
-    if (fpi_goodix_device_receive_chunk(dev, &data, &length, error)) {
-        GoodixDevicePack *pack = (GoodixDevicePack *) data;
+    if (fpi_goodix_device_receive_chunk(dev, buffer, &length, error)) {
+        GoodixDevicePack *pack = (GoodixDevicePack *) buffer->data;
         message_length = pack->length;
     } else {
         return FALSE;
@@ -128,11 +128,10 @@ gboolean fpi_goodix_device_receive_data(FpDevice *dev, GoodixMessage **message, 
 
     while (length - 1 < message_length) {
         chunk_count++;
-        data = g_realloc(data, GOODIX_EP_IN_MAX_BUF_SIZE * chunk_count);
-        fpi_goodix_device_receive_chunk(dev, (&data + (chunk_count - 1) * GOODIX_EP_IN_MAX_BUF_SIZE), &length, error);
+        fpi_goodix_device_receive_chunk(dev, buffer, &length, error);
     }
-    gboolean success = fpi_goodix_protocol_decode(data, message, error);
-    g_free(data);
+    gboolean success = fpi_goodix_protocol_decode(buffer->data, message, error);
+    g_byte_array_free(buffer, TRUE);
     return success;
 }
 
