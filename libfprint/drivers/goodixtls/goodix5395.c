@@ -274,7 +274,7 @@ static void fpi_device_goodixtls5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
             FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Wrong read type in reply, expected: %02x, received: %02x", 0xb003, read_structure->message_read_type))
         }
 
-        if (read_structure->payload_size != receive_message->payload_len - sizeof(GoodixProductionRead) - 1) {
+        if (read_structure->payload_size != receive_message->payload_len - sizeof(GoodixProductionRead)) {
             FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Payload does not match reported size: %lu != %d", receive_message->payload_len - sizeof(GoodixProductionRead), read_structure->payload_size))
         }
 
@@ -369,8 +369,8 @@ static void activate_run_state(FpiSsm *ssm, FpDevice *dev) {
           fpi_device_goodixtls5395_write_psk(dev, ssm);
           break;
         case SETUP_FINGER_DOWN_DETECTION:
-        fpi_device_goodixtls5395_setup_finger_down_detection(dev, ssm);
-        break;
+            fpi_device_goodixtls5395_setup_finger_down_detection(dev, ssm);
+            break;
 //    case ACTIVATE_NOP:
 //      goodix_send_nop(dev, check_none, ssm);
 //      break;

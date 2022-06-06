@@ -126,15 +126,15 @@ gboolean fpi_goodix_device_receive_data(FpDevice *dev, GoodixMessage **message, 
     }
 
     while (buffer->len - 1 < message_length) {
-        GByteArray *temp = g_byte_array_new();
-        fpi_goodix_device_receive_chunk(dev, temp, error);
-        guint8 contd_command_byte = temp->data[0];
+        GByteArray *chuck = g_byte_array_new();
+        fpi_goodix_device_receive_chunk(dev, chuck, error);
+        guint8 contd_command_byte = chuck->data[0];
          if ((contd_command_byte & 0xFE) != command_byte){
             g_set_error(error, 1, "Wrong contd_command_byte: expected %d, received %d", &command_byte, &contd_command_byte);
          }
-        g_byte_array_remove_index(temp, 0);
-        g_byte_array_append(buffer, temp->data, temp->len);
-        g_byte_array_free(temp, temp->len);
+        g_byte_array_remove_index(chuck, 0);
+        g_byte_array_append(buffer, chuck->data, chuck->len);
+        g_byte_array_free(chuck, chuck->len);
     }
     fp_dbg("complete mess: %s", fpi_goodix_protocol_data_to_str(buffer->data, buffer->len));
     gboolean success = fpi_goodix_protocol_decode(buffer->data, message, error);
