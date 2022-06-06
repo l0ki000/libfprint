@@ -281,13 +281,11 @@ static void fpi_device_goodixtls5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
         guint8 *received_psk = receive_message->payload + sizeof(GoodixProductionRead);
         fp_dbg("psk is %s", fpi_goodix_protocol_data_to_str(received_psk, read_structure->payload_size));
 
+        
         guint8 *psk = g_malloc0(32);
-        guint8 *calculated_sha256 = g_malloc0(32);
-        guint calculated_length = 0;
-        crypto_utils_sha256_hash(psk, 32, calculated_sha256, calculated_length);
-        fp_dbg("Calculated psk: %s", fpi_goodix_protocol_data_to_str(calculated_sha256, calculated_length));
-        class->is_psk_valid = memcmp(received_psk, calculated_sha256, calculated_length) == 0;
-
+        GByteArray *calculate_sha256 = crypto_utils_sha256_hash(psk, 32);
+        fp_dbg("Calculated psk: %s", fpi_goodix_protocol_data_to_str(calculate_sha256->data, calculate_sha256->len));
+        class->is_psk_valid = memcmp(received_psk, calculate_sha256->data, calculate_sha256->len) == 0;
         fpi_ssm_next_state(ssm);
     } else {
         fpi_ssm_mark_failed(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Not read reply for command %02x", receive_message->command));

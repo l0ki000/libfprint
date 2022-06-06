@@ -24,12 +24,15 @@
 #include <openssl/hmac.h>
 #include <openssl/evp.h>
 
-void crypto_utils_sha256_hash(const guint8 *data, const guint length, guint8 *result_hash, guint result_length) {
+GByteArray *crypto_utils_sha256_hash(guint8 *data, gint len) {
     SHA256_CTX sha256;
+    guchar res_buf[SHA256_DIGEST_LENGTH];
     SHA256_Init(&sha256);
-    SHA256_Update(&sha256, data, length);
-    SHA256_Final(result_hash, &sha256);
-    result_length = SHA256_DIGEST_LENGTH;
+    SHA256_Update(&sha256, data, len);
+    SHA256_Final(&res_buf, &sha256);
+    GByteArray *result = g_byte_array_new();
+    g_byte_array_append(result, res_buf, SHA256_DIGEST_LENGTH);
+    return result;
 }
 
 GByteArray *crypto_utils_derive_key(GByteArray *psk, GByteArray *random_data, gsize session_key_lenght) {
