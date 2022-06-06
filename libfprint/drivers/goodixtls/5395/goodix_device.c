@@ -25,6 +25,8 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
+#include "crypto_utils.h"
+#include "goodix_gtls.h"
 
 #include "drivers_api.h"
 #include "goodix_device.h"

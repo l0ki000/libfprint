@@ -19,6 +19,7 @@
 #pragma once
 
 #include "goodix_protocol.h"
+#include "goodix_gtls.h"
 
 G_DECLARE_DERIVABLE_TYPE(FpiGoodixDevice, fpi_goodix_device, FPI, GOODIX_DEVICE, FpImageDevice);
 
@@ -54,23 +55,6 @@ struct _FpiGoodixDeviceClass
     gboolean is_psk_valid;
 };
 
-typedef struct __attribute__((__packed__)) __GoodixGTLSParams
-{
-    gint state;
-    GByteArray *client_random;
-    GByteArray *server_random;
-    GByteArray *client_identity;
-    GByteArray *server_identity;
-    GByteArray *symmetric_key;
-    GByteArray *symmetric_iv;
-    GByteArray *hmac_key;
-    gint hmac_client_counter_init;
-    gint hmac_server_counter_init;
-    gint hmac_client_counter;
-    gint hmac_server_counter;
-    GByteArray *psk;
-} GoodixGTLSParams;
-
 typedef void (*GoodixDeviceReceiveCallback)(FpDevice *dev, GoodixMessage *message, GError *error);
 
 gboolean fpi_goodix_device_init_device(FpDevice *dev, GError **error);
@@ -82,8 +66,5 @@ gboolean fpi_goodix_device_receive_data(FpDevice *dev, GoodixMessage **message, 
 void fpi_goodix_device_empty_buffer(FpDevice *dev);
 gboolean fpi_goodix_device_reset(FpDevice *dev, guint8 reset_type, gboolean irq_status);
 gboolean fpi_goodix_device_gtls_connection(FpDevice *dev, GError *error);
-GoodixGTLSParams *fpi_goodix_device_gtls_init_params(void);
-void fpi_goodix_device_gtls_client_hello_step(FpDevice *dev);
-gboolean fpi_goodix_device_gtls_server_identity_step(FpDevice *dev, GError *error);
-void fpi_goodix_device_send_mcu(FpDevice *dev, const guint8 *data_type, gint data_type_lenght, GByteArray *data);
-gboolean fpi_goodix_device_recv_mcu(FpDevice *dev, guint read_type, GoodixMessage **message, GError *error);
+void fpi_goodix_device_send_mcu(FpDevice *dev, const guint32 data_type, GByteArray *data);
+GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint read_type, GError *error);
