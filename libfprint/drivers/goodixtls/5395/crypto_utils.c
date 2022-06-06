@@ -1,6 +1,7 @@
 // Crypto utils for goodix 5395 driver
 
 // Copyright (C) 2022 Anton Turko <anton.turko@proton.me>
+// Copyright (C) 2022 Juri Sacchetta <jurisacchetta@gmail.com>
 
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -18,6 +19,7 @@
 
 #include <glib.h>
 #include "crypto_utils.h"
+#include "goodix_protocol.h"
 
 
 #include <openssl/sha.h>
@@ -36,38 +38,66 @@ GByteArray *crypto_utils_sha256_hash(guint8 *data, gint len) {
 }
 
 GByteArray *crypto_utils_derive_key(GByteArray *psk, GByteArray *random_data, gsize session_key_lenght) {
+    //printf("PSK: %s\n", fpi_goodix_protocol_data_to_str(psk->data, psk->len));
+    //printf("random_data_utils: %s\n", fpi_goodix_protocol_data_to_str(random_data->data, random_data->len));
     GByteArray *seed = g_byte_array_new();
-    g_byte_array_append(seed, "master secret", sizeof("master secret"));
-    g_byte_array_append(seed, random_data->data, random_data->len);
-    GByteArray *temp_session_key = g_byte_array_new();
     GByteArray *A = g_byte_array_new();
+    GByteArray *session_key = g_byte_array_new();
+    guint resultlen = 0;
+    guint8 *resultbuf = NULL;
+
+    // seed = b"master secret" + random_data
+    // session_key = b""
+    // A = seed
+    char s[] = "master secret";
+    g_byte_array_append(seed, s, strlen("master secret"));
+    g_byte_array_append(seed, random_data->data, random_data->len);
     g_byte_array_append(A, seed->data, seed->len);
 
-    guint resultlen = 0;
-    guchar resultbuf[EVP_MAX_MD_SIZE];
-    while (temp_session_key->len < session_key_lenght) {
-        HMAC(EVP_sha256(), psk->data, psk->len, A->data, A->len, resultbuf, &resultlen);
-        g_byte_array_free(A, TRUE);
+
+    // while len(session_key) < session_key_length:
+    //     A = Crypto.Hash.HMAC.HMAC(psk, A, Crypto.Hash.SHA256).digest()
+    //     session_key += Crypto.Hash.HMAC.HMAC(psk, A + seed,
+    //                                          Crypto.Hash.SHA256).digest()
+
+    // data: bytes = session_key[:session_key_length]
+    // return data
+    GByteArray *B, *to_free, *temp;
+    int i = 1;
+    while (session_key->len < session_key_lenght) {
+        //printf("Iterazione %d\n", i);
+        to_free = A;
+        printf("A: %s\n", fpi_goodix_protocol_data_to_str(A->data, A->len));
+
+        A = crypto_utils_HMAC_SHA256(psk, A);
+        printf("A: %s\n", fpi_goodix_protocol_data_to_str(A->data, A->len));
+
+        g_byte_array_free(to_free, TRUE);
+        temp = g_byte_array_new();
+        g_byte_array_append(temp, A->data, A->len);
+        g_byte_array_append(temp, seed->data, seed->len);
+        //printf("temp: %s\n", fpi_goodix_protocol_data_to_str(temp->data, temp->len));
         
-        A = g_byte_array_new();
-        g_byte_array_append(A, resultbuf, resultlen);
-        g_byte_array_append(A, seed->data, seed->len);
+        B = crypto_utils_HMAC_SHA256(psk, temp);
+        //printf("B: %s\n", fpi_goodix_protocol_data_to_str(B->data, B->len));
         
-        HMAC(EVP_sha256(), psk->data, psk->len, A->data, A->len, resultbuf, &resultlen);
-        g_byte_array_append(temp_session_key, resultbuf, resultlen);
+        g_byte_array_free(temp, TRUE);
+        g_byte_array_append(session_key, B->data, B->len);
+        //printf("session_key: %s\n", fpi_goodix_protocol_data_to_str(session_key->data, session_key->len));
+        i++;
     }
-    GByteArray *session_key = g_byte_array_new();
-    g_byte_array_append(session_key, temp_session_key->data, session_key_lenght);
+    GByteArray *result = g_byte_array_new();
+    g_byte_array_append(result, session_key->data, session_key_lenght);
     g_byte_array_free(seed, TRUE);
-    g_byte_array_free(temp_session_key, TRUE);
+    g_byte_array_free(session_key, TRUE);
     g_byte_array_free(A, TRUE);
-    return session_key;
+    return result;
 }
 
-GByteArray *crypto_utils_HMAC_SHA256(GByteArray *buf1, GByteArray* buf2){
+GByteArray *crypto_utils_HMAC_SHA256(GByteArray *key, GByteArray* data){
     guint resultlen = 0;
     guchar resultbuf[EVP_MAX_MD_SIZE];
-    HMAC(EVP_sha256(), buf1->data, buf1->len, buf2->data, buf2->len, resultbuf, &resultlen);
+    HMAC(EVP_sha256(), key->data, key->len, data->data, data->len, resultbuf, &resultlen);
     GByteArray *result = g_byte_array_new();
     g_byte_array_append(result, resultbuf, resultlen);
     return result;
