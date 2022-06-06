@@ -17,3 +17,5 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 void crypto_utils_sha256_hash(const guint8 *data, const guint length, guint8 *result_hash, guint result_length);
+GByteArray *crypto_utils_derive_key(GByteArray *psk, GByteArray *random_data, gsize session_key_lenght);
+GByteArray *crypto_utils_HMAC_SHA256(GByteArray *buf1, GByteArray *buf2);
