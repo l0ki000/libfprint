@@ -344,6 +344,5 @@ GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint32 read_type, GError 
         return FALSE;
     }
     g_byte_array_remove_range(msg_payload, 0, 8);
-    printf("payload: %s/n", fpi_goodix_protocol_data_to_str(msg_payload->data, msg_payload->len));
     return msg_payload;
 }
