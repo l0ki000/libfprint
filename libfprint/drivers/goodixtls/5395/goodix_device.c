@@ -304,8 +304,21 @@ gboolean fpi_goodix_device_gtls_connection(FpDevice *dev, GError *error) {
     fp_dbg("hmac_client_counter_init:    %#x", priv->gtls_params->hmac_client_counter_init);
     fp_dbg("hmac_client_counter_init:    %#x", priv->gtls_params->hmac_server_counter_init);
 
-    // fpi_goodix_gtls_server_done_step();
-
+    GByteArray *temp = g_byte_array_new();
+    g_byte_array_append(temp, priv->gtls_params->server_identity->data, priv->gtls_params->server_identity->len);
+    guint payload[] = {0xee, 0xee, 0xee, 0xee};
+    g_byte_array_append(temp, payload, 4);
+    fpi_goodix_device_send_mcu(dev, 0xFF03, temp);
+    g_byte_array_free(temp, TRUE);
+    priv->gtls_params->state = 4;
+    temp = fpi_goodix_device_recv_mcu(dev, 0xFF04, error);
+    if (temp->data[0] != 0){
+        //TODO set error
+        return FALSE;
+    }
+    priv->gtls_params->hmac_client_counter = priv->gtls_params->hmac_client_counter_init;
+    priv->gtls_params->hmac_server_counter = priv->gtls_params->hmac_server_counter_init;
+    priv->gtls_params->state = 5;
     fp_dbg("GTLS handshake successful");
     return TRUE;
 }
