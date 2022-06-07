@@ -38,12 +38,15 @@ GoodixGTLSParams *fpi_goodix_device_gtls_init_params(void) {
     return params;
 }
 
-void fpi_goodix_gtls_create_hello_message(GoodixGTLSParams *params) {
+GByteArray *fpi_goodix_gtls_create_hello_message() {
+    GByteArray *res = g_byte_array_new();
     GRand *rand = g_rand_new();
     for (int i = 0; i < 8; i++) {
         guint32 r = g_rand_int(rand);
-        g_byte_array_append(params->client_random, &r, sizeof(guint32));
+        g_byte_array_append(res, &r, sizeof(guint32));
     }
+    g_rand_free(rand);
+    return res;
 }
 
 void fpi_goodix_gtls_decode_server_hello(GoodixGTLSParams *params, GByteArray *recv_mcu_payload) {

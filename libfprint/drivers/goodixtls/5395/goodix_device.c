@@ -129,15 +129,15 @@ gboolean fpi_goodix_device_receive_data(FpDevice *dev, GoodixMessage **message, 
     }
 
     while (buffer->len - 1 < message_length) {
-        GByteArray *chuck = g_byte_array_new();
-        fpi_goodix_device_receive_chunk(dev, chuck, error);
-        guint8 contd_command_byte = chuck->data[0];
+        GByteArray *chunk = g_byte_array_new();
+        fpi_goodix_device_receive_chunk(dev, chunk, error);
+        guint8 contd_command_byte = chunk->data[0];
          if ((contd_command_byte & 0xFE) != command_byte){
             g_set_error(error, 1, "Wrong contd_command_byte: expected %d, received %d", &command_byte, &contd_command_byte);
          }
-        g_byte_array_remove_index(chuck, 0);
-        g_byte_array_append(buffer, chuck->data, chuck->len);
-        g_byte_array_free(chuck, chuck->len);
+        g_byte_array_remove_index(chunk, 0);
+        g_byte_array_append(buffer, chunk->data, chunk->len);
+        g_byte_array_free(chunk, chunk->len);
     }
     fp_dbg("complete mess: %s", fpi_goodix_protocol_data_to_str(buffer->data, buffer->len));
     gboolean success = fpi_goodix_protocol_decode(buffer->data, message, error);
@@ -277,7 +277,7 @@ gboolean fpi_goodix_device_gtls_connection(FpDevice *dev, GError *error) {
     priv->gtls_params = fpi_goodix_device_gtls_init_params();
 
     // Hello phase
-    fpi_goodix_gtls_create_hello_message(priv->gtls_params);
+    priv->gtls_params->client_random = fpi_goodix_gtls_create_hello_message();
     fp_dbg("client_random: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->client_random->data, priv->gtls_params->client_random->len));
     fp_dbg("client_random_len: %02x", priv->gtls_params->client_random->len);
     fpi_goodix_device_send_mcu(dev, 0xFF01, priv->gtls_params->client_random);

@@ -45,7 +45,7 @@ GByteArray *crypto_utils_derive_key(GByteArray *psk, GByteArray *random_data, gs
     guint8 *resultbuf = NULL;
 
     char s[] = "master secret";
-    g_byte_array_append(seed, s, strlen("master secret"));
+    g_byte_array_append(seed, s, strlen(s));
     g_byte_array_append(seed, random_data->data, random_data->len);
     g_byte_array_append(A, seed->data, seed->len);
 

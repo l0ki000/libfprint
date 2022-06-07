@@ -18,4 +18,4 @@
 
 GByteArray *crypto_utils_sha256_hash(guint8 *data, gint len);
 GByteArray *crypto_utils_derive_key(GByteArray *psk, GByteArray *random_data, gsize session_key_lenght);
-GByteArray *crypto_utils_HMAC_SHA256(GByteArray *buf1, GByteArray *buf2);
+GByteArray *crypto_utils_HMAC_SHA256(GByteArray *key, GByteArray *data);
