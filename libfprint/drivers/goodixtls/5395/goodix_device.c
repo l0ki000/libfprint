@@ -279,14 +279,14 @@ gboolean fpi_goodix_device_gtls_connection(FpDevice *dev, GError *error) {
     // Hello phase
     fpi_goodix_gtls_create_hello_message(priv->gtls_params);
     fp_dbg("client_random: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->client_random->data, priv->gtls_params->client_random->len));
-    fp_dbg("client_random_len: %#x", priv->gtls_params->client_random->len);
+    fp_dbg("client_random_len: %02x", priv->gtls_params->client_random->len);
     fpi_goodix_device_send_mcu(dev, 0xFF01, priv->gtls_params->client_random);
     priv->gtls_params->state = 2;
 
     // Server identity step
     GByteArray *recv_mcu_payload = fpi_goodix_device_recv_mcu(dev, 0xFF02, error);
     if (recv_mcu_payload == NULL || recv_mcu_payload->len != 0x40) {
-        g_set_error(error, 1, "Wrong length, expected 0x40 - received: %#x", recv_mcu_payload->len);
+        g_set_error(error, 1, "Wrong length, expected 0x40 - received: %02x", recv_mcu_payload->len);
         return FALSE;
     }
     fpi_goodix_gtls_decode_server_hello(priv->gtls_params, recv_mcu_payload);
@@ -301,8 +301,8 @@ gboolean fpi_goodix_device_gtls_connection(FpDevice *dev, GError *error) {
     fp_dbg("session_key:    %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->symmetric_key->data, priv->gtls_params->symmetric_key->len));
     fp_dbg("session_iv:     %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->symmetric_iv->data, priv->gtls_params->symmetric_iv->len));
     fp_dbg("hmac_key:       %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->hmac_key->data, priv->gtls_params->hmac_key->len));
-    fp_dbg("hmac_client_counter_init:    %#x", priv->gtls_params->hmac_client_counter_init);
-    fp_dbg("hmac_client_counter_init:    %#x", priv->gtls_params->hmac_server_counter_init);
+    fp_dbg("hmac_client_counter_init:    %02x", priv->gtls_params->hmac_client_counter_init);
+    fp_dbg("hmac_client_counter_init:    %02x", priv->gtls_params->hmac_server_counter_init);
 
     GByteArray *temp = g_byte_array_new();
     g_byte_array_append(temp, priv->gtls_params->server_identity->data, priv->gtls_params->server_identity->len);
@@ -349,11 +349,11 @@ GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint32 read_type, GError 
     guint32 payload_size_recv  = (guint32)(msg_payload->data[4] | msg_payload->data[5] << 8 | msg_payload->data[6] << 16 | msg_payload->data[7] << 32);
     
     if (read_type != read_type_recv) {
-        g_set_error(error, 1, "Wrong read_type, excepted: %#x - received: %s", read_type, fpi_goodix_protocol_data_to_str(message->payload, sizeof(read_type)));
+        g_set_error(error, 1, "Wrong read_type, excepted: %02x - received: %s", read_type, fpi_goodix_protocol_data_to_str(message->payload, sizeof(read_type)));
         return FALSE;
     }
     if (payload_size_recv != msg_payload->len) {
-        g_set_error(error, 1, "Wrong payload size, excepted: %#x - received: %s", read_type, fpi_goodix_protocol_data_to_str(message->payload, sizeof(payload_size_recv)));
+        g_set_error(error, 1, "Wrong payload size, excepted: %02x - received: %s", read_type, fpi_goodix_protocol_data_to_str(message->payload, sizeof(payload_size_recv)));
         return FALSE;
     }
     g_byte_array_remove_range(msg_payload, 0, 8);
