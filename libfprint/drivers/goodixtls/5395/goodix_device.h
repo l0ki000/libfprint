@@ -19,6 +19,7 @@
 #pragma once
 
 #include "goodix_protocol.h"
+#include "goodix_gtls.h"
 
 G_DECLARE_DERIVABLE_TYPE(FpiGoodixDevice, fpi_goodix_device, FPI, GOODIX_DEVICE, FpImageDevice);
 
@@ -64,3 +65,6 @@ gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean 
 gboolean fpi_goodix_device_receive_data(FpDevice *dev, GoodixMessage **message, GError **error);
 void fpi_goodix_device_empty_buffer(FpDevice *dev);
 gboolean fpi_goodix_device_reset(FpDevice *dev, guint8 reset_type, gboolean irq_status);
+gboolean fpi_goodix_device_gtls_connection(FpDevice *dev, GError *error);
+void fpi_goodix_device_send_mcu(FpDevice *dev, const guint32 data_type, GByteArray *data);
+GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint read_type, GError *error);

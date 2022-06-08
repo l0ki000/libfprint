@@ -25,6 +25,8 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
+#include "crypto_utils.h"
+#include "goodix_gtls.h"
 
 #include "drivers_api.h"
 #include "goodix_device.h"
@@ -50,6 +52,8 @@ typedef struct {
 
     guint8 *data;
     guint32 length;
+    GoodixGTLSParams *gtls_params;
+    GByteArray *psk;
 } FpiGoodixDevicePrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE(FpiGoodixDevice, fpi_goodix_device, FP_TYPE_IMAGE_DEVICE);
@@ -89,7 +93,7 @@ static void fpi_goodix_device_class_init(FpiGoodixDeviceClass *class) { }
 
 // ----- METHODS -----
 
-static gboolean fpi_goodix_device_receive_chunk(FpDevice *dev, guint8 **data, glong *length, GError **error) {
+static gboolean fpi_goodix_device_receive_chunk(FpDevice *dev, GByteArray *data, GError **error) {
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDeviceClass *class = FPI_GOODIX_DEVICE_GET_CLASS(self);
     FpiUsbTransfer *transfer = fpi_usb_transfer_new(dev);
@@ -105,34 +109,39 @@ static gboolean fpi_goodix_device_receive_chunk(FpDevice *dev, guint8 **data, gl
     }
 
     if (success) {
-        memcpy(*data, transfer->buffer, transfer->actual_length);
-        *length = transfer->actual_length;
-        fp_dbg("Received chunk %s", fpi_goodix_protocol_data_to_str(*data, *length));
+        g_byte_array_append(data, transfer->buffer, transfer->actual_length);
+        fp_dbg("Received chunk %s", fpi_goodix_protocol_data_to_str(transfer->buffer, transfer->actual_length));
     }
     fpi_usb_transfer_unref(transfer);
     return success;
 }
 
 gboolean fpi_goodix_device_receive_data(FpDevice *dev, GoodixMessage **message, GError **error) {
-    guint8 *data = g_malloc0( GOODIX_EP_IN_MAX_BUF_SIZE);
-    glong length = 0;
+    GByteArray *buffer = g_byte_array_new();
     glong message_length = 0;
-    guint chunk_count = 1;
-
-    if (fpi_goodix_device_receive_chunk(dev, &data, &length, error)) {
-        GoodixDevicePack *pack = (GoodixDevicePack *) data;
+    guint8 command_byte;
+    if (fpi_goodix_device_receive_chunk(dev, buffer, error)) {
+        GoodixDevicePack *pack = (GoodixDevicePack *) buffer->data;
+        command_byte = pack->cmd;
         message_length = pack->length;
     } else {
         return FALSE;
     }
 
-    while (length - 1 < message_length) {
-        chunk_count++;
-        data = g_realloc(data, GOODIX_EP_IN_MAX_BUF_SIZE * chunk_count);
-        fpi_goodix_device_receive_chunk(dev, (&data + (chunk_count - 1) * GOODIX_EP_IN_MAX_BUF_SIZE), &length, error);
+    while (buffer->len - 1 < message_length) {
+        GByteArray *chunk = g_byte_array_new();
+        fpi_goodix_device_receive_chunk(dev, chunk, error);
+        guint8 contd_command_byte = chunk->data[0];
+         if ((contd_command_byte & 0xFE) != command_byte){
+            g_set_error(error, 1, "Wrong contd_command_byte: expected %d, received %d", &command_byte, &contd_command_byte);
+         }
+        g_byte_array_remove_index(chunk, 0);
+        g_byte_array_append(buffer, chunk->data, chunk->len);
+        g_byte_array_free(chunk, chunk->len);
     }
-    gboolean success = fpi_goodix_protocol_decode(data, message, error);
-    g_free(data);
+    fp_dbg("complete mess: %s", fpi_goodix_protocol_data_to_str(buffer->data, buffer->len));
+    gboolean success = fpi_goodix_protocol_decode(buffer->data, message, error);
+    g_byte_array_free(buffer, TRUE);
     return success;
 }
 
@@ -147,6 +156,7 @@ gboolean fpi_goodix_device_init_device(FpDevice *dev, GError **error) {
     priv->callback = NULL;
     priv->user_data = NULL;
     priv->data = NULL;
+    priv->gtls_params = NULL;
     priv->length = 0;
 
     return g_usb_device_claim_interface(fpi_device_get_usb_device(dev), class->interface, G_USB_DEVICE_CLAIM_INTERFACE_NONE, error);
@@ -221,7 +231,7 @@ gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean 
 }
 
 void fpi_goodix_device_empty_buffer(FpDevice *dev) {
-    while (fpi_goodix_device_receive_chunk(dev, NULL, NULL, NULL)) {
+    while (fpi_goodix_device_receive_chunk(dev, NULL, NULL)) {
 
     }
 }
@@ -257,4 +267,95 @@ gboolean fpi_goodix_device_reset(FpDevice *dev, guint8 reset_type, gboolean irq_
 
     GError *error = NULL;
     return fpi_goodix_device_send(dev, message, TRUE, 500, FALSE, &error);
+}
+
+gboolean fpi_goodix_device_gtls_connection(FpDevice *dev, GError *error) {
+    fp_dbg("fpi_goodix_device_gtls_connection()");
+    fp_dbg("Starting GTLS handshake");
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    priv->gtls_params = fpi_goodix_device_gtls_init_params();
+
+    // Hello phase
+    priv->gtls_params->client_random = fpi_goodix_gtls_create_hello_message();
+    fp_dbg("client_random: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->client_random->data, priv->gtls_params->client_random->len));
+    fp_dbg("client_random_len: %02x", priv->gtls_params->client_random->len);
+    fpi_goodix_device_send_mcu(dev, 0xFF01, priv->gtls_params->client_random);
+    priv->gtls_params->state = 2;
+
+    // Server identity step
+    GByteArray *recv_mcu_payload = fpi_goodix_device_recv_mcu(dev, 0xFF02, error);
+    if (recv_mcu_payload == NULL || recv_mcu_payload->len != 0x40) {
+        g_set_error(error, 1, "Wrong length, expected 0x40 - received: %02x", recv_mcu_payload->len);
+        return FALSE;
+    }
+    fpi_goodix_gtls_decode_server_hello(priv->gtls_params, recv_mcu_payload);
+    fp_dbg("server_random: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->server_random->data, priv->gtls_params->server_random->len));
+    fp_dbg("server_identity: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->server_identity->data, priv->gtls_params->server_identity->len));
+
+    if(!fpi_goodix_gtls_derive_key(priv->gtls_params)){
+        //TODO set error
+        fp_dbg("client_identity: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->client_identity->data, priv->gtls_params->client_identity->len));
+        return FALSE;
+    }
+    fp_dbg("session_key:    %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->symmetric_key->data, priv->gtls_params->symmetric_key->len));
+    fp_dbg("session_iv:     %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->symmetric_iv->data, priv->gtls_params->symmetric_iv->len));
+    fp_dbg("hmac_key:       %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->hmac_key->data, priv->gtls_params->hmac_key->len));
+    fp_dbg("hmac_client_counter_init:    %02x", priv->gtls_params->hmac_client_counter_init);
+    fp_dbg("hmac_client_counter_init:    %02x", priv->gtls_params->hmac_server_counter_init);
+
+    GByteArray *temp = g_byte_array_new();
+    g_byte_array_append(temp, priv->gtls_params->server_identity->data, priv->gtls_params->server_identity->len);
+    guint payload[] = {0xee, 0xee, 0xee, 0xee};
+    g_byte_array_append(temp, payload, 4);
+    fpi_goodix_device_send_mcu(dev, 0xFF03, temp);
+    g_byte_array_free(temp, TRUE);
+    priv->gtls_params->state = 4;
+    temp = fpi_goodix_device_recv_mcu(dev, 0xFF04, error);
+    if (temp->data[0] != 0){
+        //TODO set error
+        return FALSE;
+    }
+    priv->gtls_params->hmac_client_counter = priv->gtls_params->hmac_client_counter_init;
+    priv->gtls_params->hmac_server_counter = priv->gtls_params->hmac_server_counter_init;
+    priv->gtls_params->state = 5;
+    fp_dbg("GTLS handshake successful");
+    return TRUE;
+}
+
+void fpi_goodix_device_send_mcu(FpDevice *dev, const guint32 data_type, GByteArray *data) {
+    fp_dbg("fpi_goodix_device_send_mcu()");
+    GByteArray *payload = g_byte_array_new();
+    guint32 t = data->len + 8;
+    g_byte_array_append(payload, &data_type, sizeof(data_type));
+    g_byte_array_append(payload, (guint8 *)&t, sizeof(t));
+    g_byte_array_append(payload, data->data, data->len);
+    fp_dbg("mcu: %s", fpi_goodix_protocol_data_to_str(payload->data, payload->len));
+    fp_dbg("payload_lenght: %d", payload->len);
+    GoodixMessage *message = fpi_goodix_protocol_create_message(0xD, 1, payload->data, payload->len);
+    GError *error = NULL;
+    fpi_goodix_device_send(dev, message, TRUE, 500, FALSE, &error);
+}
+
+GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint32 read_type, GError *error) {
+    fp_dbg("recv_mcu_payload()");
+    GoodixMessage *message = g_malloc0(sizeof(GoodixMessage)); //TODO this must be freed
+    if (!fpi_goodix_device_receive_data(dev, &message, &error) || message->category != 0xD || message->command != 1) {
+        return FALSE;
+    }
+    GByteArray *msg_payload = g_byte_array_new();
+    g_byte_array_append(msg_payload, message->payload, message->payload_len);
+    guint32 read_type_recv = (guint32)(msg_payload->data[0] | msg_payload->data[1] << 8 | msg_payload->data[2] << 16 | msg_payload->data[3] << 32);
+    guint32 payload_size_recv  = (guint32)(msg_payload->data[4] | msg_payload->data[5] << 8 | msg_payload->data[6] << 16 | msg_payload->data[7] << 32);
+    
+    if (read_type != read_type_recv) {
+        g_set_error(error, 1, "Wrong read_type, excepted: %02x - received: %s", read_type, fpi_goodix_protocol_data_to_str(message->payload, sizeof(read_type)));
+        return FALSE;
+    }
+    if (payload_size_recv != msg_payload->len) {
+        g_set_error(error, 1, "Wrong payload size, excepted: %02x - received: %s", read_type, fpi_goodix_protocol_data_to_str(message->payload, sizeof(payload_size_recv)));
+        return FALSE;
+    }
+    g_byte_array_remove_range(msg_payload, 0, 8);
+    return msg_payload;
 }

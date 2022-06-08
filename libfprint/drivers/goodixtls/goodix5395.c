@@ -274,20 +274,18 @@ static void fpi_device_goodixtls5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
             FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Wrong read type in reply, expected: %02x, received: %02x", 0xb003, read_structure->message_read_type))
         }
 
-        if (read_structure->payload_size != receive_message->payload_len - sizeof(GoodixProductionRead) - 1) {
+        if (read_structure->payload_size != receive_message->payload_len - sizeof(GoodixProductionRead)) {
             FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Payload does not match reported size: %lu != %d", receive_message->payload_len - sizeof(GoodixProductionRead), read_structure->payload_size))
         }
 
         guint8 *received_psk = receive_message->payload + sizeof(GoodixProductionRead);
         fp_dbg("psk is %s", fpi_goodix_protocol_data_to_str(received_psk, read_structure->payload_size));
 
+        
         guint8 *psk = g_malloc0(32);
-        guint8 *calculated_sha256;
-        guint calculated_length;
-        crypto_utils_sha256_hash(psk, 32, &calculated_sha256, &calculated_length);
-        fp_dbg("Calculated psk: %s", fpi_goodix_protocol_data_to_str(calculated_sha256, calculated_length));
-        class->is_psk_valid = memcmp(received_psk, calculated_sha256, calculated_length) == 0;
-
+        GByteArray *calculate_sha256 = crypto_utils_sha256_hash(psk, 32);
+        fp_dbg("Calculated psk: %s", fpi_goodix_protocol_data_to_str(calculate_sha256->data, calculate_sha256->len));
+        class->is_psk_valid = memcmp(received_psk, calculate_sha256->data, calculate_sha256->len) == 0;
         fpi_ssm_next_state(ssm);
     } else {
         fpi_ssm_mark_failed(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Not read reply for command %02x", receive_message->command));
@@ -332,6 +330,14 @@ static void fpi_device_goodixtls5395_write_psk(FpDevice *dev, FpiSsm *ssm) {
     }
 }
 
+void fpi_device_goodixtls5395_setup_finger_down_detection(FpDevice *dev, FpiSsm *ssm){
+    GError *error = NULL;
+    if(!fpi_goodix_device_gtls_connection(dev, error)){
+        FAIL_SSM_WITH_RETURN(ssm, error)
+        fp_dbg("Error!");
+    }
+}
+
 static void activate_run_state(FpiSsm *ssm, FpDevice *dev) {
   GError *error = NULL;
 
@@ -360,7 +366,9 @@ static void activate_run_state(FpiSsm *ssm, FpDevice *dev) {
       case WRITE_PSK:
           fpi_device_goodixtls5395_write_psk(dev, ssm);
           break;
-
+        case SETUP_FINGER_DOWN_DETECTION:
+            fpi_device_goodixtls5395_setup_finger_down_detection(dev, ssm);
+            break;
 //    case ACTIVATE_NOP:
 //      goodix_send_nop(dev, check_none, ssm);
 //      break;

@@ -103,9 +103,9 @@ gboolean fpi_goodix_protocol_decode(guint8 *data, GoodixMessage **message, GErro
     *message = g_malloc0(sizeof(GoodixMessage));
     (*message)->category = pack->cmd >> 4;
     (*message)->command = (pack->cmd & 0xF) >> 1;
-    (*message)->payload = g_malloc0(pack->length);
-    (*message)->payload_len = pack->length;
-    memcpy((*message)->payload, data + sizeof(GoodixDevicePack), pack->length);
+    (*message)->payload = g_malloc0(pack->length - 1);
+    (*message)->payload_len = pack->length - 1;
+    memcpy((*message)->payload, data + sizeof(GoodixDevicePack), pack->length - 1);
 
     return TRUE;
 }
@@ -137,6 +137,6 @@ static guint8 fpi_goodix_device_compute_otp_hash(const guint8 *otp, guint otp_le
 
 gboolean fpi_goodix_device_verify_otp_hash(const guint8 *otp, guint otp_length, const guint8 otp_hash[]) {
     guint8 received_hash = otp[25];
-    guint8 computed_hash = fpi_goodix_device_compute_otp_hash(otp, otp_length - 1, otp_hash);
+    guint8 computed_hash = fpi_goodix_device_compute_otp_hash(otp, otp_length, otp_hash);
     return received_hash == computed_hash;
 }

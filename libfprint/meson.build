@@ -155,7 +155,7 @@ helper_sources = {
     'goodixtls' :
         [ 'drivers/goodixtls/goodix_proto.c', 'drivers/goodixtls/goodix.c', 'drivers/goodixtls/goodixtls.c' ],
     'goodix_device' :
-        [ 'drivers/goodixtls/5395/goodix_protocol.c', 'drivers/goodixtls/5395/goodix_device.c', 'drivers/goodixtls/5395/crypto_utils.c' ],
+        [ 'drivers/goodixtls/5395/goodix_protocol.c', 'drivers/goodixtls/5395/goodix_device.c', 'drivers/goodixtls/5395/crypto_utils.c', 'drivers/goodixtls/5395/goodix_gtls.c' ],
     'nss' :
         [ ],
     'udev' :
