@@ -85,9 +85,9 @@ gboolean fpi_goodix_gtls_derive_key(GoodixGTLSParams *params) {
     g_byte_array_append(random, params->client_random->data, params->client_random->len);
     g_byte_array_append(random, params->server_random->data, params->server_random->len);
     params->client_identity = crypto_utils_HMAC_SHA256(params->hmac_key, random);
-    if (memcmp(params->client_identity->data, params->server_identity->data, params->client_identity->len) ||params->client_identity->len != params->server_identity->len )
-    {
-        //TODO set error
+
+    if (memcmp(params->client_identity->data, params->server_identity->data, params->client_identity->len) != 0
+        || params->client_identity->len != params->server_identity->len ) {
         return FALSE;
     }
     return TRUE;

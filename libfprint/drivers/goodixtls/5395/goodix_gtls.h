@@ -20,9 +20,16 @@
 
 #include "goodix_protocol.h"
 
+enum EstablishConnectionStates {
+    CLIENT_HELLO,
+    SERVER_IDENTIFY,
+    SERVER_DONE,
+    ESTABLISH_CONNECTION_STATES_NUM
+};
+
 typedef struct __attribute__((__packed__)) __GoodixGTLSParams
 {
-    gint state;
+    enum EstablishConnectionStates state;
     GByteArray *client_random;
     GByteArray *server_random;
     GByteArray *client_identity;

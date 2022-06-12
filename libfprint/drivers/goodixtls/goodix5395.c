@@ -29,7 +29,6 @@
 #define FIRMWARE_VERSION_1 "GF5288_HTSEC_APP_10011"
 #define FIRMWARE_VERSION_2 "GF5288_HTSEC_APP_10020"
 
-#define GOODIX_DEVICE_ERROR_DOMAIN 1
 #define FDT_BASE_LEN 24
 
 const guint8 goodix_5395_otp_hash[] = {
@@ -75,6 +74,8 @@ enum activate_states {
   CHECK_SENSOR,
   CHECK_PSK,
   WRITE_PSK,
+  ESTABLISH_GTS_CONNECTION,
+  UPDATE_ALL_BASE,
   SETUP_FINGER_DOWN_DETECTION,
   WAITING_FOR_FINGER_DOWN,
   READING_FINGER,
@@ -93,9 +94,6 @@ static void activate_complete(FpiSsm *ssm, FpDevice *dev, GError *error) {
 //        fpi_ssm_start(fpi_ssm_new(dev, goodix_tls_run_state, TLS_NUM_STATES), goodix_tls_complete);
     }
 }
-
-#define FPI_GOODIX_DEVICE_ERROR(code, format, ...)  g_error_new(GOODIX_DEVICE_ERROR_DOMAIN, code, format, __VA_ARGS__)
-#define FAIL_SSM_WITH_RETURN(ssm, error) fpi_ssm_mark_failed(ssm, error); return;
 
 static void fpi_device_goodixtls5395_ping(FpDevice *dev, FpiSsm *ssm) {
     fpi_goodix_device_empty_buffer(dev);
@@ -116,12 +114,12 @@ static void fpi_device_goodixtls5395_device_enable(FpDevice *dev, FpiSsm *ssm) {
 
     GError *error = NULL;
     if (!fpi_goodix_device_send(dev, enable_message, TRUE, 500, FALSE, &error)) {
-        FAIL_SSM_WITH_RETURN(ssm, error)
+        FAIL_SSM_AND_RETURN(ssm, error)
     }
 
     GoodixMessage *receive_message = NULL;
     if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
-        FAIL_SSM_WITH_RETURN(ssm, error)
+        FAIL_SSM_AND_RETURN(ssm, error)
     }
 
     if (receive_message->category == 0x8 && receive_message->command == 0x1) {
@@ -145,12 +143,12 @@ static void fpi_device_goodixtls5395_check_firmware_version(FpDevice *dev, FpiSs
     GError *error = NULL;
 
     if(!fpi_goodix_device_send(dev, message, TRUE, 500, FALSE, &error)) {
-        FAIL_SSM_WITH_RETURN(ssm, error)
+        FAIL_SSM_AND_RETURN(ssm, error)
     }
 
     GoodixMessage *receive_message = NULL;
     if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
-        FAIL_SSM_WITH_RETURN(ssm, error)
+        FAIL_SSM_AND_RETURN(ssm, error)
     }
 
     if (receive_message->category == 0xA && receive_message->command == 4) {
@@ -175,12 +173,12 @@ static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
 
     GError *error = NULL;
     if (!fpi_goodix_device_send(dev, check_message, TRUE, 500, FALSE, &error)) {
-        FAIL_SSM_WITH_RETURN(ssm, error)
+        FAIL_SSM_AND_RETURN(ssm, error)
     }
 
     GoodixMessage *receive_message = NULL;
     if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
-        FAIL_SSM_WITH_RETURN(ssm, error)
+        FAIL_SSM_AND_RETURN(ssm, error)
     }
 
     if (receive_message->category == 0xA && receive_message->command == 0x3) {
@@ -189,8 +187,8 @@ static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
         guint8 *otp = receive_message->payload;
         guint otp_length = receive_message->payload_len;
         if(!fpi_goodix_device_verify_otp_hash(otp, otp_length, goodix_5395_otp_hash)) {
-            FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_SENSOR, "OTP hash incorrect %s",
-                                                              fpi_goodix_protocol_data_to_str(otp, otp_length)))
+            FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_SENSOR, "OTP hash incorrect %s",
+                                                             fpi_goodix_protocol_data_to_str(otp, otp_length)))
         }
         guint8 diff = otp[17] >> 1 & 0x1F;
         fp_dbg("[0x11]:%02x, diff[5:1]=%02x", otp[0x11], diff);
@@ -254,12 +252,12 @@ static void fpi_device_goodixtls5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
 
     GError *error = NULL;
     if (!fpi_goodix_device_send(dev, check_psk_message, TRUE, 500, FALSE, &error)) {
-        FAIL_SSM_WITH_RETURN(ssm, error)
+        FAIL_SSM_AND_RETURN(ssm, error)
     }
 
     GoodixMessage *receive_message = NULL;
     if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
-        FAIL_SSM_WITH_RETURN(ssm, error)
+        FAIL_SSM_AND_RETURN(ssm, error)
     }
 
     if (receive_message->category == 0xE && receive_message->command == 2) {
@@ -267,15 +265,15 @@ static void fpi_device_goodixtls5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
         GoodixProductionRead *read_structure = (GoodixProductionRead *) receive_message->payload;
 
         if (read_structure->status != 0x00) {
-            FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Not a production read reply for command %02x", receive_message->command))
+            FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Not a production read reply for command %02x", receive_message->command))
         }
 
         if (read_structure->message_read_type != 0xb003) {
-            FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Wrong read type in reply, expected: %02x, received: %02x", 0xb003, read_structure->message_read_type))
+            FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Wrong read type in reply, expected: %02x, received: %02x", 0xb003, read_structure->message_read_type))
         }
 
         if (read_structure->payload_size != receive_message->payload_len - sizeof(GoodixProductionRead)) {
-            FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Payload does not match reported size: %lu != %d", receive_message->payload_len - sizeof(GoodixProductionRead), read_structure->payload_size))
+            FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Payload does not match reported size: %lu != %d", receive_message->payload_len - sizeof(GoodixProductionRead), read_structure->payload_size))
         }
 
         guint8 *received_psk = receive_message->payload + sizeof(GoodixProductionRead);
@@ -311,30 +309,22 @@ static void fpi_device_goodixtls5395_write_psk(FpDevice *dev, FpiSsm *ssm) {
 
     GError *error = NULL;
     if (!fpi_goodix_device_send(dev, write_psk_message, TRUE, 500, FALSE, &error)) {
-        FAIL_SSM_WITH_RETURN(ssm, error)
+        FAIL_SSM_AND_RETURN(ssm, error)
     }
 
     GoodixMessage *receive_message = NULL;
     if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
-        FAIL_SSM_WITH_RETURN(ssm, error)
+        FAIL_SSM_AND_RETURN(ssm, error)
     }
 
     if (receive_message->category != 0xE || receive_message->command != 1) {
-        FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(WRITE_PSK, "Not a production write reply command: 0%02x", receive_message->command))
+        FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(WRITE_PSK, "Not a production write reply command: 0%02x", receive_message->command))
     }
 
     if (receive_message->payload[0] != 0) {
-        FAIL_SSM_WITH_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(WRITE_PSK, "Production write MCU failed. Command: 0%02x", receive_message->command))
+        FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(WRITE_PSK, "Production write MCU failed. Command: 0%02x", receive_message->command))
     } else {
         fpi_ssm_next_state(ssm);
-    }
-}
-
-void fpi_device_goodixtls5395_setup_finger_down_detection(FpDevice *dev, FpiSsm *ssm){
-    GError *error = NULL;
-    if(!fpi_goodix_device_gtls_connection(dev, error)){
-        FAIL_SSM_WITH_RETURN(ssm, error)
-        fp_dbg("Error!");
     }
 }
 
@@ -366,9 +356,12 @@ static void activate_run_state(FpiSsm *ssm, FpDevice *dev) {
       case WRITE_PSK:
           fpi_device_goodixtls5395_write_psk(dev, ssm);
           break;
-        case SETUP_FINGER_DOWN_DETECTION:
-            fpi_device_goodixtls5395_setup_finger_down_detection(dev, ssm);
-            break;
+      case ESTABLISH_GTS_CONNECTION:
+          fpi_goodix_device_gtls_connection(dev, ssm);
+          break;
+      case UPDATE_ALL_BASE:
+          fp_dbg("Update all base");
+          break;
 //    case ACTIVATE_NOP:
 //      goodix_send_nop(dev, check_none, ssm);
 //      break;

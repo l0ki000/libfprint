@@ -41,8 +41,6 @@ typedef struct {
     gint tls_server_sock;
     SSL_CTX *tls_server_ctx;
 
-    GSource *timeout;
-
     GoodixMessage *message;
     gboolean ack;
     gboolean reply;
@@ -65,31 +63,6 @@ static void fpi_goodix_device_init(FpiGoodixDevice *self) {}
 static void fpi_goodix_device_class_init(FpiGoodixDeviceClass *class) { }
 
 // ----- CALLBAKS -----
-
-//void fpi_goodix_device_send_done(FpDevice *dev, guint8 *data, guint16 length, GError *error) {
-//    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
-//    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
-//    GoodixDeviceCmdCallback callback = priv->callback;
-//    gpointer user_data = priv->user_data;
-//
-//    if (!(priv->ack || priv->reply)) return;
-//
-//    if (priv->timeout) {
-//        g_clear_pointer(&priv->timeout, g_source_destroy);
-//    }
-//    priv->ack = FALSE;
-//    priv->reply = FALSE;
-//    priv->callback = NULL;
-//    priv->user_data = NULL;
-//
-//    if (!error) {
-//        fp_dbg("Completed command: 0x%02x", priv->message->command);
-//    }
-//
-//    if (callback) {
-//        callback(dev, data, length, user_data, error);
-//    }
-//}
 
 // ----- METHODS -----
 
@@ -150,7 +123,6 @@ gboolean fpi_goodix_device_init_device(FpDevice *dev, GError **error) {
     FpiGoodixDeviceClass *class = FPI_GOODIX_DEVICE_GET_CLASS(self);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
 
-    priv->timeout = NULL;
     priv->ack = FALSE;
     priv->reply = FALSE;
     priv->callback = NULL;
@@ -167,9 +139,6 @@ gboolean fpi_goodix_device_deinit_device(FpDevice *dev, GError **error) {
     FpiGoodixDeviceClass *class = FPI_GOODIX_DEVICE_GET_CLASS(self);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
 
-    if (priv->timeout) {
-        g_source_destroy(priv->timeout);
-    }
     g_free(priv->data);
 
     return g_usb_device_release_interface(fpi_device_get_usb_device(dev),
@@ -269,58 +238,73 @@ gboolean fpi_goodix_device_reset(FpDevice *dev, guint8 reset_type, gboolean irq_
     return fpi_goodix_device_send(dev, message, TRUE, 500, FALSE, &error);
 }
 
-gboolean fpi_goodix_device_gtls_connection(FpDevice *dev, GError *error) {
-    fp_dbg("fpi_goodix_device_gtls_connection()");
-    fp_dbg("Starting GTLS handshake");
+
+// ----- GOODIX GTLS CONNECTION ------
+static void fpi_goodix_device_gtls_connection_handle(FpiSsm *ssm, FpDevice* dev) {
+    GError *error = NULL;
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
-    priv->gtls_params = fpi_goodix_device_gtls_init_params();
 
-    // Hello phase
-    priv->gtls_params->client_random = fpi_goodix_gtls_create_hello_message();
-    fp_dbg("client_random: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->client_random->data, priv->gtls_params->client_random->len));
-    fp_dbg("client_random_len: %02x", priv->gtls_params->client_random->len);
-    fpi_goodix_device_send_mcu(dev, 0xFF01, priv->gtls_params->client_random);
-    priv->gtls_params->state = 2;
+    switch (fpi_ssm_get_cur_state(ssm)) {
+        case CLIENT_HELLO: {
+            priv->gtls_params = fpi_goodix_device_gtls_init_params();
+            priv->gtls_params->client_random = fpi_goodix_gtls_create_hello_message();
+            fp_dbg("client_random: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->client_random->data, priv->gtls_params->client_random->len));
+            fp_dbg("client_random_len: %02x", priv->gtls_params->client_random->len);
+            fpi_goodix_device_send_mcu(dev, 0xFF01, priv->gtls_params->client_random);
+            priv->gtls_params->state = CLIENT_HELLO;
+            fpi_ssm_next_state(ssm);
+        }
+            break;
+        case SERVER_IDENTIFY: {
+            GByteArray *recv_mcu_payload = fpi_goodix_device_recv_mcu(dev, 0xFF02, error);
+            if (recv_mcu_payload == NULL || recv_mcu_payload->len != 0x40) {
+                FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(SERVER_IDENTIFY, "Wrong length, expected 0x40 - received: %02x", recv_mcu_payload->len))
+            }
+            fpi_goodix_gtls_decode_server_hello(priv->gtls_params, recv_mcu_payload);
+            fp_dbg("server_random: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->server_random->data, priv->gtls_params->server_random->len));
+            fp_dbg("server_identity: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->server_identity->data, priv->gtls_params->server_identity->len));
 
-    // Server identity step
-    GByteArray *recv_mcu_payload = fpi_goodix_device_recv_mcu(dev, 0xFF02, error);
-    if (recv_mcu_payload == NULL || recv_mcu_payload->len != 0x40) {
-        g_set_error(error, 1, "Wrong length, expected 0x40 - received: %02x", recv_mcu_payload->len);
-        return FALSE;
+            if(!fpi_goodix_gtls_derive_key(priv->gtls_params)) {
+                fp_dbg("client_identity: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->client_identity->data, priv->gtls_params->client_identity->len));
+                FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(SERVER_IDENTIFY, "Client and server identity don't match. client identity: %s, server identity: %s ",
+                                                                 fpi_goodix_protocol_data_to_str(priv->gtls_params->client_identity->data, priv->gtls_params->client_identity->len),
+                                                                 fpi_goodix_protocol_data_to_str(priv->gtls_params->server_identity->data, priv->gtls_params->server_identity->len)))
+            }
+            fp_dbg("session_key:    %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->symmetric_key->data, priv->gtls_params->symmetric_key->len));
+            fp_dbg("session_iv:     %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->symmetric_iv->data, priv->gtls_params->symmetric_iv->len));
+            fp_dbg("hmac_key:       %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->hmac_key->data, priv->gtls_params->hmac_key->len));
+            fp_dbg("hmac_client_counter_init:    %02x", priv->gtls_params->hmac_client_counter_init);
+            fp_dbg("hmac_client_counter_init:    %02x", priv->gtls_params->hmac_server_counter_init);
+
+            GByteArray *temp = g_byte_array_new();
+            g_byte_array_append(temp, priv->gtls_params->server_identity->data, priv->gtls_params->server_identity->len);
+            guint8 payload[] = {0xee, 0xee, 0xee, 0xee};
+            g_byte_array_append(temp, payload, 4);
+            fpi_goodix_device_send_mcu(dev, 0xFF03, temp);
+            g_byte_array_free(temp, TRUE);
+            priv->gtls_params->state = SERVER_IDENTIFY;
+            fpi_ssm_next_state(ssm);
+        }
+            break;
+        case SERVER_DONE: {
+            GByteArray *receive_mcu = fpi_goodix_device_recv_mcu(dev, 0xFF04, error);
+            if (receive_mcu->data[0] != 0){
+                FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(SERVER_DONE, "Receive mcu error: mcu %s",
+                                                                 fpi_goodix_protocol_data_to_str(receive_mcu->data, receive_mcu->len)))
+            }
+            priv->gtls_params->hmac_client_counter = priv->gtls_params->hmac_client_counter_init;
+            priv->gtls_params->hmac_server_counter = priv->gtls_params->hmac_server_counter_init;
+            priv->gtls_params->state = 5;
+            fp_dbg("GTLS handshake successful");
+            fpi_ssm_next_state(ssm);
+        }
+            break;
     }
-    fpi_goodix_gtls_decode_server_hello(priv->gtls_params, recv_mcu_payload);
-    fp_dbg("server_random: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->server_random->data, priv->gtls_params->server_random->len));
-    fp_dbg("server_identity: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->server_identity->data, priv->gtls_params->server_identity->len));
+}
 
-    if(!fpi_goodix_gtls_derive_key(priv->gtls_params)){
-        //TODO set error
-        fp_dbg("client_identity: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->client_identity->data, priv->gtls_params->client_identity->len));
-        return FALSE;
-    }
-    fp_dbg("session_key:    %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->symmetric_key->data, priv->gtls_params->symmetric_key->len));
-    fp_dbg("session_iv:     %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->symmetric_iv->data, priv->gtls_params->symmetric_iv->len));
-    fp_dbg("hmac_key:       %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->hmac_key->data, priv->gtls_params->hmac_key->len));
-    fp_dbg("hmac_client_counter_init:    %02x", priv->gtls_params->hmac_client_counter_init);
-    fp_dbg("hmac_client_counter_init:    %02x", priv->gtls_params->hmac_server_counter_init);
-
-    GByteArray *temp = g_byte_array_new();
-    g_byte_array_append(temp, priv->gtls_params->server_identity->data, priv->gtls_params->server_identity->len);
-    guint payload[] = {0xee, 0xee, 0xee, 0xee};
-    g_byte_array_append(temp, payload, 4);
-    fpi_goodix_device_send_mcu(dev, 0xFF03, temp);
-    g_byte_array_free(temp, TRUE);
-    priv->gtls_params->state = 4;
-    temp = fpi_goodix_device_recv_mcu(dev, 0xFF04, error);
-    if (temp->data[0] != 0){
-        //TODO set error
-        return FALSE;
-    }
-    priv->gtls_params->hmac_client_counter = priv->gtls_params->hmac_client_counter_init;
-    priv->gtls_params->hmac_server_counter = priv->gtls_params->hmac_server_counter_init;
-    priv->gtls_params->state = 5;
-    fp_dbg("GTLS handshake successful");
-    return TRUE;
+void fpi_goodix_device_gtls_connection(FpDevice *dev, FpiSsm *parent_ssm) {
+    fpi_ssm_start_subsm(parent_ssm, fpi_ssm_new(dev, fpi_goodix_device_gtls_connection_handle, ESTABLISH_CONNECTION_STATES_NUM));
 }
 
 void fpi_goodix_device_send_mcu(FpDevice *dev, const guint32 data_type, GByteArray *data) {
