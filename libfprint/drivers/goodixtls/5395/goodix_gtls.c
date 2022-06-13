@@ -17,10 +17,8 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 #include <glib.h>
-#include <stdio.h>
 
 #include "goodix_gtls.h"
-#include "goodix_protocol.h"
 #include "crypto_utils.h"
 
 GoodixGTLSParams *fpi_goodix_device_gtls_init_params(void) {
@@ -53,7 +51,7 @@ void fpi_goodix_gtls_decode_server_hello(GoodixGTLSParams *params, GByteArray *r
     g_byte_array_append(params->server_random, recv_mcu_payload->data, 0x20);
     g_byte_array_remove_range(recv_mcu_payload, 0, 0x20);
     g_byte_array_append(params->server_identity, recv_mcu_payload->data, 0x20);
-    g_byte_array_free(recv_mcu_payload, recv_mcu_payload->len);
+    g_byte_array_free(recv_mcu_payload, TRUE);
 }
 
 gboolean fpi_goodix_gtls_derive_key(GoodixGTLSParams *params) {

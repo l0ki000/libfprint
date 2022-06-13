@@ -29,8 +29,7 @@ typedef struct __attribute__((__packed__)) _GoodixDevicePack {
 typedef struct __attribute__((__packed__)) _GoodixMessage {
     guint8 category;
     guint8 command;
-    guint8* payload;
-    guint payload_len;
+    GByteArray *payload;
 } GoodixMessage;
 
 typedef struct __attribute__((__packed__)) _GoodixProductionRead {

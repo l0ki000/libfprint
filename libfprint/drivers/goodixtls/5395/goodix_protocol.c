@@ -54,7 +54,7 @@ gboolean fpi_goodix_protocol_check_ack(GoodixMessage *message, GError **error) {
     return is_valid_ack;
 }
 
-static guint8 fpi_goodix_calc_checksum(guint8 *data, guint16 length) {
+static guint8 fpi_goodix_calc_checksum(const guint8 *data, guint16 length) {
     guint8 checksum = 0;
     for (guint16 i = 0; i < length; i++) {
         checksum += data[i];
@@ -64,7 +64,7 @@ static guint8 fpi_goodix_calc_checksum(guint8 *data, guint16 length) {
 
 void fpi_goodix_protocol_encode(GoodixMessage *message, gboolean calc_checksum, gboolean pad_data,
                                 guint8 **data, guint32 *data_len) {
-    guint16 payload_len = message->payload_len;
+    guint16 payload_len = message->payload->len;
     GoodixDevicePack *pack;
     *data_len = sizeof(GoodixDevicePack) + payload_len + sizeof(guint8);
 
@@ -78,7 +78,7 @@ void fpi_goodix_protocol_encode(GoodixMessage *message, gboolean calc_checksum, 
     pack->cmd = message->category << 4 | message->command << 1;
     pack->length = GUINT16_TO_LE(payload_len + sizeof(guint8));
 
-    memcpy(*data + sizeof(GoodixDevicePack), message->payload, payload_len);
+    memcpy(*data + sizeof(GoodixDevicePack), message->payload->data, payload_len);
 
     if (calc_checksum) {
         gsize package_with_payload_length = sizeof(GoodixDevicePack) + payload_len;
@@ -95,7 +95,7 @@ gboolean fpi_goodix_protocol_decode(guint8 *data, GoodixMessage **message, GErro
     if (message_checksum != 0x88) {
         guint checksum = fpi_goodix_calc_checksum(data, data_length);
         if (message_checksum != checksum) {
-            g_set_error(error, 1, "Wrong checksum: expected %d, received %d", checksum, message_checksum);
+            g_set_error(error, 1, 1, "Wrong checksum: expected %02x, received %02x", checksum, message_checksum);
             return FALSE;
         }
     }
@@ -103,10 +103,8 @@ gboolean fpi_goodix_protocol_decode(guint8 *data, GoodixMessage **message, GErro
     *message = g_malloc0(sizeof(GoodixMessage));
     (*message)->category = pack->cmd >> 4;
     (*message)->command = (pack->cmd & 0xF) >> 1;
-    (*message)->payload = g_malloc0(pack->length - 1);
-    (*message)->payload_len = pack->length - 1;
-    memcpy((*message)->payload, data + sizeof(GoodixDevicePack), pack->length - 1);
-
+    (*message)->payload = g_byte_array_new();
+    g_byte_array_append((*message)->payload, data + sizeof(GoodixDevicePack), pack->length - 1);
     return TRUE;
 }
 
@@ -119,8 +117,8 @@ GoodixMessage *fpi_goodix_protocol_create_message(guint8 category, guint8 comman
     GoodixMessage *message = g_malloc0(sizeof(GoodixMessage));
     message->category = category;
     message->command = command;
-    message->payload_len = length;
-    message->payload = payload;
+    message->payload = g_byte_array_new();
+    g_byte_array_append(message->payload, payload, length);
     return message;
 }
 

@@ -106,11 +106,11 @@ gboolean fpi_goodix_device_receive_data(FpDevice *dev, GoodixMessage **message, 
         fpi_goodix_device_receive_chunk(dev, chunk, error);
         guint8 contd_command_byte = chunk->data[0];
          if ((contd_command_byte & 0xFE) != command_byte){
-            g_set_error(error, 1, "Wrong contd_command_byte: expected %d, received %d", &command_byte, &contd_command_byte);
+            g_set_error(error, 1, 1,"Wrong contd_command_byte: expected %02x, received %02x", command_byte, contd_command_byte);
          }
         g_byte_array_remove_index(chunk, 0);
         g_byte_array_append(buffer, chunk->data, chunk->len);
-        g_byte_array_free(chunk, chunk->len);
+        g_byte_array_free(chunk, TRUE);
     }
     fp_dbg("complete mess: %s", fpi_goodix_protocol_data_to_str(buffer->data, buffer->len));
     gboolean success = fpi_goodix_protocol_decode(buffer->data, message, error);
@@ -226,13 +226,8 @@ gboolean fpi_goodix_device_reset(FpDevice *dev, guint8 reset_type, gboolean irq_
         }
         break;
     }
-    GoodixMessage *message = g_malloc0(sizeof(GoodixMessage));
-    message->category = 0xA;
-    message->command = 1;
-    message->payload_len = 2;
-    message->payload = g_malloc0(message->payload_len);
-    message->payload[0] = payload & 0xFF;
-    message->payload[1] = payload >> 8;
+    guint8 message_payload[] = {payload & 0xFF, payload >> 8};
+    GoodixMessage *message = fpi_goodix_protocol_create_message(0xA, 1, message_payload, 2);
 
     GError *error = NULL;
     return fpi_goodix_device_send(dev, message, TRUE, 500, FALSE, &error);
@@ -328,16 +323,16 @@ GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint32 read_type, GError 
         return FALSE;
     }
     GByteArray *msg_payload = g_byte_array_new();
-    g_byte_array_append(msg_payload, message->payload, message->payload_len);
+    g_byte_array_append(msg_payload, message->payload->data, message->payload->len);
     guint32 read_type_recv = (guint32)(msg_payload->data[0] | msg_payload->data[1] << 8 | msg_payload->data[2] << 16 | msg_payload->data[3] << 32);
     guint32 payload_size_recv  = (guint32)(msg_payload->data[4] | msg_payload->data[5] << 8 | msg_payload->data[6] << 16 | msg_payload->data[7] << 32);
     
     if (read_type != read_type_recv) {
-        g_set_error(error, 1, "Wrong read_type, excepted: %02x - received: %s", read_type, fpi_goodix_protocol_data_to_str(message->payload, sizeof(read_type)));
+        g_set_error(&error, 1, 1, "Wrong read_type, excepted: %02x - received: %s", read_type, fpi_goodix_protocol_data_to_str(message->payload->data, sizeof(read_type)));
         return FALSE;
     }
     if (payload_size_recv != msg_payload->len) {
-        g_set_error(error, 1, "Wrong payload size, excepted: %02x - received: %s", read_type, fpi_goodix_protocol_data_to_str(message->payload, sizeof(payload_size_recv)));
+        g_set_error(&error, 1, 1,"Wrong payload size, excepted: %02x - received: %s", read_type, fpi_goodix_protocol_data_to_str(message->payload->data, sizeof(payload_size_recv)));
         return FALSE;
     }
     g_byte_array_remove_range(msg_payload, 0, 8);

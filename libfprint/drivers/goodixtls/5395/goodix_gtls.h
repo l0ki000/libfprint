@@ -45,6 +45,6 @@ typedef struct __attribute__((__packed__)) __GoodixGTLSParams
 } GoodixGTLSParams;
 
 GoodixGTLSParams *fpi_goodix_device_gtls_init_params(void);
-GByteArray *fpi_goodix_gtls_create_hello_message();
+GByteArray *fpi_goodix_gtls_create_hello_message(void);
 void fpi_goodix_gtls_decode_server_hello(GoodixGTLSParams *params, GByteArray *recv_mcu_payload);
 gboolean fpi_goodix_gtls_derive_key(GoodixGTLSParams *params);

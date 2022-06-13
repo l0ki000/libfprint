@@ -67,7 +67,7 @@ G_DEFINE_TYPE(FpiDeviceGoodixTls5395, fpi_device_goodixtls5395, FPI_TYPE_GOODIX_
 
 // ---- ACTIVE SECTION START ----
 
-enum activate_states {
+enum Goodix5395InitState {
   INIT_DEVICE,
   CHECK_FIRMWARE,
   DEVICE_ENABLE,
@@ -76,16 +76,11 @@ enum activate_states {
   WRITE_PSK,
   ESTABLISH_GTS_CONNECTION,
   UPDATE_ALL_BASE,
-  SETUP_FINGER_DOWN_DETECTION,
-  WAITING_FOR_FINGER_DOWN,
-  READING_FINGER,
-  WAITING_FOR_FINGER_UP,
-  SET_UP_SLEEP_MODE,
-  POWER_OFF_SENSOR,
+  SET_SLEEP_MODE,
   DEVICE_INIT_NUM_STATES,
 };
 
-static void activate_complete(FpiSsm *ssm, FpDevice *dev, GError *error) {
+static void fpi_goodix_5395_activate_complete(FpiSsm *ssm, FpDevice *dev, GError *error) {
     FpImageDevice *image_dev = FP_IMAGE_DEVICE(dev);
 
     fpi_image_device_activate_complete(image_dev, error);
@@ -123,7 +118,7 @@ static void fpi_device_goodixtls5395_device_enable(FpDevice *dev, FpiSsm *ssm) {
     }
 
     if (receive_message->category == 0x8 && receive_message->command == 0x1) {
-        int chip_id = fpi_goodix_protocol_decode_u32(receive_message->payload, receive_message->payload_len);
+        int chip_id = fpi_goodix_protocol_decode_u32(receive_message->payload->data, receive_message->payload->len);
         if (chip_id >> 8 != 0x220C) {
             fpi_ssm_mark_failed(ssm, FPI_GOODIX_DEVICE_ERROR(DEVICE_ENABLE, "Unsupported chip ID %x", chip_id));
         } else {
@@ -152,7 +147,7 @@ static void fpi_device_goodixtls5395_check_firmware_version(FpDevice *dev, FpiSs
     }
 
     if (receive_message->category == 0xA && receive_message->command == 4) {
-        g_autofree gchar *fw_version = g_strndup(receive_message->payload, receive_message->payload_len);
+        g_autofree gchar *fw_version = g_strndup(receive_message->payload->data, receive_message->payload->len);
         if (g_strcmp0(fw_version, FIRMWARE_VERSION_1) == 0 || g_strcmp0(fw_version, FIRMWARE_VERSION_2) == 0) {
             fpi_ssm_next_state(ssm);
         } else {
@@ -182,10 +177,10 @@ static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
     }
 
     if (receive_message->category == 0xA && receive_message->command == 0x3) {
-        fp_dbg("OTP: %s", fpi_goodix_protocol_data_to_str(receive_message->payload, receive_message->payload_len));
+        fp_dbg("OTP: %s", fpi_goodix_protocol_data_to_str(receive_message->payload->data, receive_message->payload->len));
 
-        guint8 *otp = receive_message->payload;
-        guint otp_length = receive_message->payload_len;
+        guint8 *otp = receive_message->payload->data;
+        guint otp_length = receive_message->payload->len;
         if(!fpi_goodix_device_verify_otp_hash(otp, otp_length, goodix_5395_otp_hash)) {
             FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_SENSOR, "OTP hash incorrect %s",
                                                              fpi_goodix_protocol_data_to_str(otp, otp_length)))
@@ -262,7 +257,7 @@ static void fpi_device_goodixtls5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
 
     if (receive_message->category == 0xE && receive_message->command == 2) {
 
-        GoodixProductionRead *read_structure = (GoodixProductionRead *) receive_message->payload;
+        GoodixProductionRead *read_structure = (GoodixProductionRead *) receive_message->payload->data;
 
         if (read_structure->status != 0x00) {
             FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Not a production read reply for command %02x", receive_message->command))
@@ -272,11 +267,11 @@ static void fpi_device_goodixtls5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
             FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Wrong read type in reply, expected: %02x, received: %02x", 0xb003, read_structure->message_read_type))
         }
 
-        if (read_structure->payload_size != receive_message->payload_len - sizeof(GoodixProductionRead)) {
-            FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Payload does not match reported size: %lu != %d", receive_message->payload_len - sizeof(GoodixProductionRead), read_structure->payload_size))
+        if (read_structure->payload_size != receive_message->payload->len - sizeof(GoodixProductionRead)) {
+            FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_PSK, "Payload does not match reported size: %lu != %d", receive_message->payload->len - sizeof(GoodixProductionRead), read_structure->payload_size))
         }
 
-        guint8 *received_psk = receive_message->payload + sizeof(GoodixProductionRead);
+        guint8 *received_psk = receive_message->payload->data + sizeof(GoodixProductionRead);
         fp_dbg("psk is %s", fpi_goodix_protocol_data_to_str(received_psk, read_structure->payload_size));
 
         
@@ -321,21 +316,18 @@ static void fpi_device_goodixtls5395_write_psk(FpDevice *dev, FpiSsm *ssm) {
         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(WRITE_PSK, "Not a production write reply command: 0%02x", receive_message->command))
     }
 
-    if (receive_message->payload[0] != 0) {
+    if (receive_message->payload->data[0] != 0) {
         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(WRITE_PSK, "Production write MCU failed. Command: 0%02x", receive_message->command))
     } else {
         fpi_ssm_next_state(ssm);
     }
 }
 
-static void activate_run_state(FpiSsm *ssm, FpDevice *dev) {
-  GError *error = NULL;
-
+static void fpi_goodix_5395_activate_run_state(FpiSsm *ssm, FpDevice *dev) {
   switch (fpi_ssm_get_cur_state(ssm)) {
-    case INIT_DEVICE:
-
-        fpi_device_goodixtls5395_ping(dev, ssm);
-      break;
+      case INIT_DEVICE:
+          fpi_device_goodixtls5395_ping(dev, ssm);
+          break;
 
       case CHECK_FIRMWARE:
           fpi_device_goodixtls5395_check_firmware_version(dev, ssm);
@@ -362,37 +354,11 @@ static void activate_run_state(FpiSsm *ssm, FpDevice *dev) {
       case UPDATE_ALL_BASE:
           fp_dbg("Update all base");
           break;
-//    case ACTIVATE_NOP:
-//      goodix_send_nop(dev, check_none, ssm);
-//      break;
-//
-//    case ACTIVATE_CHECK_FW_VER:
-//      goodix_send_firmware_version(dev, check_firmware_version, ssm);
-//      break;
-//
-//    case ACTIVATE_CHECK_PSK:
-//      goodix_send_preset_psk_read(dev, GOODIX_5395_PSK_FLAGS, 0,
-//                                  check_preset_psk_read, ssm);
-//      break;
-//
-//    case ACTIVATE_RESET:
-//      goodix_send_reset(dev, TRUE, 20, check_reset, ssm);
-//      break;
-//
-//    case BREAK:
-//      g_set_error_literal(&error, G_IO_ERROR, G_IO_ERROR_CANCELLED, "Break");
-//      fpi_ssm_mark_failed(ssm, error);
-//      break;
+      case SET_SLEEP_MODE:
+          fp_dbg("Set sleep mode.");
+          break;
   }
 }
-
-//static void activate_complete(FpiSsm *ssm, FpDevice *dev, GError *error) {
-//  FpImageDevice *image_dev = FP_IMAGE_DEVICE(dev);
-//
-//  fpi_image_device_activate_complete(image_dev, error);
-//
-//  if (!error) goodix_tls(dev);
-//}
 
 // ---- ACTIVE SECTION END ----
 
@@ -427,8 +393,8 @@ static void fpi_device_goodixtls5395_deinit_device(FpImageDevice *img_dev) {
 static void fpi_device_goodixtls5395_activate_device(FpImageDevice *img_dev) {
   FpDevice *dev = FP_DEVICE(img_dev);
 
-  fpi_ssm_start(fpi_ssm_new(dev, activate_run_state, DEVICE_INIT_NUM_STATES),
-                activate_complete);
+  fpi_ssm_start(fpi_ssm_new(dev, fpi_goodix_5395_activate_run_state, DEVICE_INIT_NUM_STATES),
+                fpi_goodix_5395_activate_complete);
 }
 
 static void fpi_device_goodixtls5395_change_state(FpImageDevice *img_dev, FpiImageDeviceState state) {}
@@ -442,8 +408,7 @@ static void fpi_device_goodixtls5395_deactivate_device(FpImageDevice *img_dev) {
 static void fpi_device_goodixtls5395_init(FpiDeviceGoodixTls5395 *self) {
 }
 
-static void fpi_device_goodixtls5395_class_init(
-    FpiDeviceGoodixTls5395Class *class) {
+static void fpi_device_goodixtls5395_class_init(FpiDeviceGoodixTls5395Class *class) {
   FpiGoodixDeviceClass *gx_class = FPI_GOODIX_DEVICE_CLASS(class);
   FpDeviceClass *device_class = FP_DEVICE_CLASS(class);
   FpImageDeviceClass *image_device_class = FP_IMAGE_DEVICE_CLASS(class);
