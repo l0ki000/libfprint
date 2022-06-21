@@ -112,7 +112,6 @@ gboolean fpi_goodix_device_receive_data(FpDevice *dev, GoodixMessage **message, 
         g_byte_array_append(buffer, chunk->data, chunk->len);
         g_byte_array_free(chunk, TRUE);
     }
-    fp_dbg("complete mess: %s", fpi_goodix_protocol_data_to_str(buffer->data, buffer->len));
     gboolean success = fpi_goodix_protocol_decode(buffer->data, message, error);
     g_byte_array_free(buffer, TRUE);
     return success;
@@ -148,12 +147,13 @@ gboolean fpi_goodix_device_deinit_device(FpDevice *dev, GError **error) {
 static gboolean fpi_goodix_device_write(FpDevice *dev, guint8 *data, guint32 length, gint timeout_ms, GError **error) {
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDeviceClass *class = FPI_GOODIX_DEVICE_GET_CLASS(self);
-    FpiUsbTransfer *transfer = fpi_usb_transfer_new(dev);
-
-    transfer->short_is_error = TRUE;
 
     for (guint32 i = 0; i < length; i += GOODIX_EP_OUT_MAX_BUF_SIZE) {
-        fp_dbg("Send chunk %s", fpi_goodix_protocol_data_to_str(data, GOODIX_EP_OUT_MAX_BUF_SIZE));
+        FpiUsbTransfer *transfer = fpi_usb_transfer_new(dev);
+
+        transfer->short_is_error = FALSE;
+
+        fp_dbg("Send chunk %s", fpi_goodix_protocol_data_to_str(data + i, GOODIX_EP_OUT_MAX_BUF_SIZE));
         fpi_usb_transfer_fill_bulk_full(transfer, class->ep_out, data + i,
                                         GOODIX_EP_OUT_MAX_BUF_SIZE, NULL);
 
@@ -162,10 +162,10 @@ static gboolean fpi_goodix_device_write(FpDevice *dev, guint8 *data, guint32 len
             fpi_usb_transfer_unref(transfer);
             return FALSE;
         }
+        fpi_usb_transfer_unref(transfer);
     }
 
     g_free(data);
-    fpi_usb_transfer_unref(transfer);
     return TRUE;
 }
 
@@ -290,7 +290,7 @@ static void fpi_goodix_device_gtls_connection_handle(FpiSsm *ssm, FpDevice* dev)
             }
             priv->gtls_params->hmac_client_counter = priv->gtls_params->hmac_client_counter_init;
             priv->gtls_params->hmac_server_counter = priv->gtls_params->hmac_server_counter_init;
-            priv->gtls_params->state = 5;
+            priv->gtls_params->state = SERVER_DONE;
             fp_dbg("GTLS handshake successful");
             fpi_ssm_next_state(ssm);
         }
@@ -306,8 +306,8 @@ void fpi_goodix_device_send_mcu(FpDevice *dev, const guint32 data_type, GByteArr
     fp_dbg("fpi_goodix_device_send_mcu()");
     GByteArray *payload = g_byte_array_new();
     guint32 t = data->len + 8;
-    g_byte_array_append(payload, &data_type, sizeof(data_type));
-    g_byte_array_append(payload, (guint8 *)&t, sizeof(t));
+    g_byte_array_append(payload, (guint8 *) &data_type, sizeof(data_type));
+    g_byte_array_append(payload, (guint8 *) &t, sizeof(t));
     g_byte_array_append(payload, data->data, data->len);
     fp_dbg("mcu: %s", fpi_goodix_protocol_data_to_str(payload->data, payload->len));
     fp_dbg("payload_lenght: %d", payload->len);
@@ -318,8 +318,9 @@ void fpi_goodix_device_send_mcu(FpDevice *dev, const guint32 data_type, GByteArr
 
 GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint32 read_type, GError *error) {
     fp_dbg("recv_mcu_payload()");
-    GoodixMessage *message = g_malloc0(sizeof(GoodixMessage)); //TODO this must be freed
-    if (!fpi_goodix_device_receive_data(dev, &message, &error) || message->category != 0xD || message->command != 1) {
+    GoodixMessage *message = NULL;
+    if (!fpi_goodix_device_receive_data(dev, &message, &error)
+        || message->category != 0xD || message->command != 1) {
         return FALSE;
     }
     GByteArray *msg_payload = g_byte_array_new();
@@ -336,5 +337,81 @@ GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint32 read_type, GError 
         return FALSE;
     }
     g_byte_array_remove_range(msg_payload, 0, 8);
+    g_free(message);
     return msg_payload;
+}
+
+gboolean fpi_goodix_device_fdt_execute_operation(FpDevice *dev, enum FingerDetectionOperation operation, GByteArray *fdt_base, gint timeout_ms, GError **error) {
+
+    guint8 op_code;
+    switch(operation) {
+
+        case DOWN:
+            break;
+        case UP:
+            break;
+        case MANUAL:
+            break;
+    }
+
+    GByteArray *payload = g_byte_array_new();
+    g_byte_array_append(payload, &op_code, 1);
+    g_byte_array_append(payload, 1, 1);
+    g_byte_array_append(payload, fdt_base->data, fdt_base->len);
+
+    GoodixMessage *message = fpi_goodix_protocol_create_message(0x3, operation, payload->data, payload->len);
+    if (!fpi_goodix_device_send(dev, message, TRUE, timeout_ms, FALSE, error)) {
+        return FALSE;
+    }
+
+    if (operation != MANUAL) {
+        return FALSE;
+    }
+
+    return TRUE;
+
+}
+
+gboolean fpi_goodix_device_finger_detection_data(FpDevice *dev, enum FingerDetectionOperation operation, GByteArray *fdt_base, GError *error) {
+    GoodixMessage *receive_message = NULL;
+    if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
+        return FALSE;
+    }
+
+    if (receive_message->category != 0x3 || receive_message->command != operation) {
+        g_set_error(&error, 1, 1, "Not a finger detection reply. Command %02x", receive_message->command);
+        return FALSE;
+    }
+
+    if (receive_message->payload->len != 28) {
+        g_set_error(&error, 1, 1, "Finger detection payload wrong length. Command %02x", receive_message->command);
+        return FALSE;
+    }
+
+    guint8 irq_status = receive_message->payload->data[2];
+
+    return TRUE;
+}
+
+gboolean fpi_goodix_device_upload_config(FpDevice *dev, GByteArray *config, gint timeout_ms, GError **error) {
+    GoodixMessage *message = fpi_goodix_protocol_create_message_byte_array(0x9, 0, config);
+    fp_dbg("Config after %s data len %d", fpi_goodix_protocol_data_to_str(message->payload->data, message->payload->len), message->payload->len);
+    if (!fpi_goodix_device_send(dev, message, TRUE, timeout_ms, FALSE, error)) {
+        return FALSE;
+    }
+
+    GoodixMessage *receive_message = NULL;
+    if (!fpi_goodix_device_receive_data(dev, &receive_message, error)) {
+        return FALSE;
+    }
+    if (receive_message->category != 0x9 && receive_message->command != 0) {
+        *error = FPI_GOODIX_DEVICE_ERROR(1, "Not a config message. Expected category %02x command %02x, received category %02x and command %02x", 
+            0x9, 0, receive_message->category, receive_message->command); 
+        return FALSE;
+    }
+    if (receive_message->payload->data[0] != 1) {
+        *error = FPI_GOODIX_DEVICE_ERROR(1, "Upload configuration failed. Category %02x command %02x", receive_message->category, receive_message->command); 
+        return FALSE;
+    }
+    return TRUE;
 }

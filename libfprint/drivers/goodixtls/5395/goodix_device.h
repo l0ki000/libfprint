@@ -30,7 +30,7 @@ G_DECLARE_DERIVABLE_TYPE(FpiGoodixDevice, fpi_goodix_device, FPI, GOODIX_DEVICE,
 #define FPI_TYPE_GOODIX_DEVICE (fpi_goodix_device_get_type())
 
 typedef struct __attribute__((__packed__)) _GoodixCalibrationParam{
-    guint8 tcode;
+    guint16 tcode;
     guint8 delta_fdt;
     guint8 delta_down;
     guint8 delta_up;
@@ -59,6 +59,12 @@ struct _FpiGoodixDeviceClass
     gboolean is_psk_valid;
 };
 
+enum FingerDetectionOperation {
+    DOWN,
+    UP,
+    MANUAL
+};
+
 typedef void (*GoodixDeviceReceiveCallback)(FpDevice *dev, GoodixMessage *message, GError *error);
 
 gboolean fpi_goodix_device_init_device(FpDevice *dev, GError **error);
@@ -72,3 +78,5 @@ gboolean fpi_goodix_device_reset(FpDevice *dev, guint8 reset_type, gboolean irq_
 void fpi_goodix_device_gtls_connection(FpDevice *dev, FpiSsm *parent_ssm);
 void fpi_goodix_device_send_mcu(FpDevice *dev, const guint32 data_type, GByteArray *data);
 GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint read_type, GError *error);
+gboolean fpi_goodix_device_fdt_execute_operation(FpDevice *dev, enum FingerDetectionOperation operation, GByteArray *fdt_base, gint timeout_ms, GError **error);
+gboolean fpi_goodix_device_upload_config(FpDevice *dev, GByteArray *config, gint timeout_ms, GError **error);
