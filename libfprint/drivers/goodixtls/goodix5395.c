@@ -334,24 +334,26 @@ static void fpi_goodix5395_replace_value_in_section(GByteArray *config, guint8 s
     guint section_size = section_table[section_num + 1];
     fp_dbg("Section base %d", section_base);
     guint entry_base = section_base;
-    while(entry_base <= section_base + section_size) {
-        guint16 *entry_tag = config->data[entry_base];
+    while(entry_base < section_base + section_size) {
+        guint *entry_tag = config->data[entry_base] | config->data[entry_base + 1] << 8;
         if (entry_tag == tag) {
-            config->data[entry_base + 2] = value;
+            config->data[entry_base + 2] = value & 0xff;
+            config->data[entry_base + 3] = value >> 8;
         }
         entry_base += 4;
     }
 }
 
 static void fpi_goodix5395_fix_config_checksum(GByteArray *config) {
-    guint16 checksum = 0xA5A5;
+    guint checksum = 0xA5A5;
     for (guint short_index = 0; short_index < config->len - 2; short_index += 2) {
-        guint16 s = config->data[short_index];
+        guint s = config->data[short_index] | config->data[short_index + 1] << 8;
         checksum += s;
         checksum &= 0xFFFF;
     }
     checksum = 0x10000 - checksum;
-    config->data[config->len - 2] = checksum;
+    config->data[config->len - 2] = checksum & 0xff;
+    config->data[config->len - 1] = checksum >> 8;
 }
 
 static void fpi_goodix5395_upload_config(FpDevice* dev, FpiSsm* ssm) {
@@ -374,7 +376,8 @@ static void fpi_goodix5395_upload_config(FpDevice* dev, FpiSsm* ssm) {
 
 static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     //upload config
-    fpi_goodix5395_upload_config(dev, ssm);    
+    fpi_goodix5395_upload_config(dev, ssm);   
+    fp_dbg("Config is uploaded."); 
 
 }
 

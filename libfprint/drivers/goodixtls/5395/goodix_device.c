@@ -148,20 +148,31 @@ static gboolean fpi_goodix_device_write(FpDevice *dev, guint8 *data, guint32 len
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDeviceClass *class = FPI_GOODIX_DEVICE_GET_CLASS(self);
 
-    for (guint32 i = 0; i < length; i += GOODIX_EP_OUT_MAX_BUF_SIZE) {
+    guint32 sent_length = 0;
+    while(sent_length < length) {
         FpiUsbTransfer *transfer = fpi_usb_transfer_new(dev);
 
         transfer->short_is_error = FALSE;
 
-        fp_dbg("Send chunk %s", fpi_goodix_protocol_data_to_str(data + i, GOODIX_EP_OUT_MAX_BUF_SIZE));
-        fpi_usb_transfer_fill_bulk_full(transfer, class->ep_out, data + i,
-                                        GOODIX_EP_OUT_MAX_BUF_SIZE, NULL);
-
+        GByteArray *buffer = g_byte_array_new();
+        if (sent_length == 0) {
+            g_byte_array_append(buffer, data, GOODIX_EP_OUT_MAX_BUF_SIZE);
+            sent_length += GOODIX_EP_OUT_MAX_BUF_SIZE;
+        } else {
+            guint8 start_byte = data[0] | 1;
+            g_byte_array_append(buffer, &start_byte, 1);
+            g_byte_array_append(buffer, data + sent_length, GOODIX_EP_OUT_MAX_BUF_SIZE - 1);
+            sent_length += GOODIX_EP_OUT_MAX_BUF_SIZE - 1;
+        }
+        fpi_usb_transfer_fill_bulk_full(transfer, class->ep_out, buffer->data, GOODIX_EP_OUT_MAX_BUF_SIZE, NULL);
         if (!fpi_usb_transfer_submit_sync(transfer, timeout_ms, error)) {
             g_free(data);
+            g_byte_array_free(buffer, FALSE);
             fpi_usb_transfer_unref(transfer);
             return FALSE;
         }
+        fp_dbg("Chunk sent %s", fpi_goodix_protocol_data_to_str(buffer->data, GOODIX_EP_OUT_MAX_BUF_SIZE));
+        g_byte_array_free(buffer, FALSE);
         fpi_usb_transfer_unref(transfer);
     }
 
