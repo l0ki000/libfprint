@@ -292,7 +292,7 @@ static void fpi_goodix5395_upload_config(FpDevice* dev, FpiSsm* ssm) {
 static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     //upload config
     fpi_goodix5395_upload_config(dev, ssm);   
-    fp_dbg("Config is uploaded."); 
+    fp_dbg("Config is uploaded.");
 
 }
 

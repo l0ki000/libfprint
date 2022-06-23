@@ -48,3 +48,4 @@ int fpi_goodix_protocol_decode_u32(guint8 *data, uint length);
 GoodixMessage *fpi_goodix_protocol_create_message(guint8 category, guint8 command, guint8 *payload, guint8 length);
 GoodixMessage *fpi_goodix_protocol_create_message_byte_array(guint8 category, guint8 command, GByteArray *payload);
 gboolean fpi_goodix_device_verify_otp_hash(const guint8 *otp, guint otp_length, const guint8 otp_hash[]);
+GByteArray* fpi_goodix_device_decode_image(const GByteArray *image);
