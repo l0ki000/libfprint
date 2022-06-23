@@ -181,7 +181,7 @@ static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
 
     guint8 *otp = receive_message->payload->data;
     guint otp_length = receive_message->payload->len;
-    if(!fpi_goodix_device_verify_otp_hash(otp, otp_length, goodix_5395_otp_hash)) {
+    if(!fpi_goodix_protocol_verify_otp_hash(otp, otp_length, goodix_5395_otp_hash)) {
         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_SENSOR, "OTP hash incorrect %s",
                                                          fpi_goodix_protocol_data_to_str(otp, otp_length)))
     }
