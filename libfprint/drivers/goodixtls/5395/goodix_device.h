@@ -25,10 +25,6 @@
 #define FAIL_SSM_AND_RETURN(ssm, error) fpi_ssm_mark_failed(ssm, error); return;
 #define FPI_GOODIX_DEVICE_ERROR(code, format, ...)  g_error_new(GOODIX_DEVICE_ERROR_DOMAIN, code, format, __VA_ARGS__)
 
-G_DECLARE_DERIVABLE_TYPE(FpiGoodixDevice, fpi_goodix_device, FPI, GOODIX_DEVICE, FpImageDevice);
-
-#define FPI_TYPE_GOODIX_DEVICE (fpi_goodix_device_get_type())
-
 typedef struct __attribute__((__packed__)) _GoodixCalibrationParam{
     guint16 tcode;
     guint8 delta_fdt;
@@ -48,6 +44,11 @@ typedef struct __attribute__((__packed__)) _GoodixCalibrationParam{
 
 } GoodixCalibrationParam;
 
+G_DECLARE_DERIVABLE_TYPE(FpiGoodixDevice, fpi_goodix_device, FPI, GOODIX_DEVICE, FpImageDevice);
+
+#define FPI_TYPE_GOODIX_DEVICE (fpi_goodix_device_get_type())
+
+
 struct _FpiGoodixDeviceClass
 {
     FpImageDeviceClass parent;
@@ -55,7 +56,6 @@ struct _FpiGoodixDeviceClass
     gint interface;
     guint8 ep_in;
     guint8 ep_out;
-    GoodixCalibrationParam *calibration_params;
     gboolean is_psk_valid;
 };
 
@@ -80,3 +80,5 @@ void fpi_goodix_device_send_mcu(FpDevice *dev, const guint32 data_type, GByteArr
 GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint read_type, GError *error);
 gboolean fpi_goodix_device_fdt_execute_operation(FpDevice *dev, enum FingerDetectionOperation operation, GByteArray *fdt_base, gint timeout_ms, GError **error);
 gboolean fpi_goodix_device_upload_config(FpDevice *dev, GByteArray *config, gint timeout_ms, GError **error);
+void fpi_goodix_device_prepare_config(FpDevice *dev, GByteArray *config);
+void fpi_goodix_device_set_calibration_params(FpDevice *dev, GByteArray* otp);

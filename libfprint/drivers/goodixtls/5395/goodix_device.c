@@ -36,6 +36,12 @@
 
 #define GOODIX_TIMEOUT 2000
 
+
+#define TCODE_TAG 0x5C
+#define DAC_L_TAG 0x220
+#define DELTA_DOWN_TAG 0x82
+#define FDT_BASE_LEN 24
+
 typedef struct {
     pthread_t tls_server_thread;
     gint tls_server_sock;
@@ -52,6 +58,7 @@ typedef struct {
     guint32 length;
     GoodixGTLSParams *gtls_params;
     GByteArray *psk;
+    GoodixCalibrationParam *calibration_params;
 } FpiGoodixDevicePrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE(FpiGoodixDevice, fpi_goodix_device, FP_TYPE_IMAGE_DEVICE);
@@ -128,6 +135,7 @@ gboolean fpi_goodix_device_init_device(FpDevice *dev, GError **error) {
     priv->user_data = NULL;
     priv->data = NULL;
     priv->gtls_params = NULL;
+    priv->calibration_params = NULL;
     priv->length = 0;
 
     return g_usb_device_claim_interface(fpi_device_get_usb_device(dev), class->interface, G_USB_DEVICE_CLAIM_INTERFACE_NONE, error);
@@ -425,4 +433,104 @@ gboolean fpi_goodix_device_upload_config(FpDevice *dev, GByteArray *config, gint
         return FALSE;
     }
     return TRUE;
+}
+
+static void fpi_goodix5395_replace_value_in_section(GByteArray *config, guint8 section_num, guint tag, guint16 value) {
+    guint8 *section_table = config->data;
+    guint section_base = section_table[section_num + 1];
+    guint section_size = section_table[section_num + 2];
+    fp_dbg("Section base %d", section_base);
+    guint entry_base = section_base;
+    while(entry_base <= section_base + section_size) {
+        guint *entry_tag = config->data[entry_base] | config->data[entry_base + 1] << 8;
+        if (entry_tag == tag) {
+            config->data[entry_base + 2] = value & 0xff;
+            config->data[entry_base + 3] = value >> 8;
+        }
+        entry_base += 4;
+    }
+}
+
+static void fpi_goodix5395_fix_config_checksum(GByteArray *config) {
+    guint checksum = 0xA5A5;
+    for (guint short_index = 0; short_index < config->len - 2; short_index += 2) {
+        guint s = config->data[short_index] | config->data[short_index + 1] << 8;
+        checksum += s;
+        checksum &= 0xFFFF;
+    }
+    checksum = 0x10000 - checksum;
+    config->data[config->len - 2] = checksum & 0xff;
+    config->data[config->len - 1] = checksum >> 8;
+}
+
+void fpi_goodix_device_prepare_config(FpDevice *dev, GByteArray *config) {
+    FpiGoodixDeviceClass *self = FPI_GOODIX_DEVICE_GET_CLASS(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    
+    guint8 tcode = priv->calibration_params->tcode;
+    guint8 dac_l = priv->calibration_params->dac_l;
+    guint8 delta_down = priv->calibration_params->delta_down;
+    fp_dbg("tcode is %02x", tcode);
+    fpi_goodix5395_replace_value_in_section(config, 4, TCODE_TAG, tcode);
+    fpi_goodix5395_replace_value_in_section(config, 6, TCODE_TAG, tcode);
+    fpi_goodix5395_replace_value_in_section(config, 8, TCODE_TAG, tcode);
+
+    fpi_goodix5395_replace_value_in_section(config, 4, DAC_L_TAG, dac_l << 4 | 8);
+    fpi_goodix5395_replace_value_in_section(config, 6, DAC_L_TAG, dac_l << 4 | 8);
+    fpi_goodix5395_replace_value_in_section(config, 4, DELTA_DOWN_TAG, delta_down << 8 | 0x80);
+    fpi_goodix5395_fix_config_checksum(config);
+}
+
+void fpi_goodix_device_set_calibration_params(FpDevice* dev, GByteArray* payload) {
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE_GET_CLASS(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+
+    guint8 *otp = payload->data;
+    guint8 diff = otp[17] >> 1 & 0x1F;
+    fp_dbg("[0x11]:%02x, diff[5:1]=%02x", otp[0x11], diff);
+    guint16 tcode = otp[23] != 0 ? otp[23] + 1 : 0;
+
+    GoodixCalibrationParam *params = g_malloc0(sizeof(GoodixCalibrationParam));
+
+    params->tcode = tcode;
+    params->delta_fdt = 0;
+    params->delta_down = 0xD;
+    params->delta_up = 0xB;
+    params->delta_img = 0xC8;
+    params->delta_nav = 0x28;
+
+    params->dac_h = (otp[17] << 8 ^ otp[22]) & 0x1FF;
+    params->dac_l = (otp[17] & 0x40) << 2 ^ otp[31];
+
+    if (diff != 0) {
+        guint8 tmp = diff + 5;
+        guint8 tmp2 = (tmp * 0x32) >> 4;
+
+        params->delta_fdt = tmp2 / 5;
+        params->delta_down = tmp2 / 3;
+        params->delta_up = params->delta_down - 2;
+        params->delta_img = 0xC8;
+        params->delta_nav = tmp * 4;
+    }
+
+    if (otp[17] == 0 || otp[22] == 0 || otp[31] == 0) {
+        params->dac_h = 0x97;
+        params->dac_l = 0xD0;
+    }
+
+    fp_dbg("tcode:%02x delta down:%02x", tcode, params->delta_down);
+    fp_dbg("delta up:%02x delta img:%02x", params->delta_up, params->delta_img);
+    fp_dbg("delta nav:%02x dac_h:%02x dac_l:%02x", params->delta_nav, params->dac_h, params->dac_l);
+
+    params->dac_delta = 0xC83 / tcode;
+    fp_dbg("sensor broken dac_delta=%02x", params->dac_delta);
+
+    //TODO: maybe it needs to allocate fdt_base for all variable
+    guint8 *fdt_base = g_malloc0(FDT_BASE_LEN);
+
+    params->fdt_base_down = fdt_base;
+    params->fdt_base_up = fdt_base;
+    params->fdt_base_manual = fdt_base;
+
+    priv->calibration_params = params;
 }
