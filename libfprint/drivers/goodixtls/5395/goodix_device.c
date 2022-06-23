@@ -73,6 +73,16 @@ static void fpi_goodix_device_class_init(FpiGoodixDeviceClass *class) { }
 
 // ----- METHODS -----
 
+static gboolean fpi_goodix_device_check_receive_data(GoodixMessage *send_message, GoodixMessage *receive_message, GError **error) {
+    gboolean is_success_reply = send_message->category == receive_message->category 
+                                    && send_message->command == receive_message->command;
+
+    if (!is_success_reply) {
+        *error = FPI_GOODIX_DEVICE_ERROR(1, "Category and command are different for send and receive message. \n Send message category %02x, command %02x. \n Receive message category %02x, command %02x", send_message->category, send_message->command, receive_message->category, receive_message->command);
+    }
+    return is_success_reply; 
+}
+
 static gboolean fpi_goodix_device_receive_chunk(FpDevice *dev, GByteArray *data, GError **error) {
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDeviceClass *class = FPI_GOODIX_DEVICE_GET_CLASS(self);
@@ -121,6 +131,7 @@ gboolean fpi_goodix_device_receive_data(FpDevice *dev, GoodixMessage **message, 
     }
     gboolean success = fpi_goodix_protocol_decode(buffer->data, message, error);
     g_byte_array_free(buffer, TRUE);
+
     return success;
 }
 
@@ -202,7 +213,6 @@ gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean 
     priv->reply = reply;
 
     fpi_goodix_protocol_encode(message, calc_checksum, TRUE, &data, &data_len);
-    g_free(message);
 
     gboolean is_success = fpi_goodix_device_write(dev, data, data_len, timeout_ms, error);
 
@@ -537,6 +547,34 @@ void fpi_goodix_device_set_calibration_params(FpDevice* dev, GByteArray* payload
 
 gboolean fpi_goodix_device_set_sleep_mode(FpDevice *dev, GError **error) {
     guint payload[] = {0x01, 0x00};
-    GoodixMessage *message = fpi_goodix_protocol_create_message(0x6, 0, payload, 2);
+    GoodixMessage *message = fpi_goodix_protocol_create_message(0x6, 0, payload, sizeof(payload));
     return fpi_goodix_device_send(dev, message, TRUE, 200, FALSE, error);
+}
+
+gboolean fpi_goodix_device_ec_control(FpDevice *dev, gboolean is_enable, GError **error) {
+    guint8 control_val = is_enable ? 1 : 0;
+    guint8 payload[] = {control_val, control_val, 0x00};
+
+    GoodixMessage *message = fpi_goodix_protocol_create_message(0xA, 7, payload, sizeof(payload));
+    if(!fpi_goodix_device_send(dev, message, TRUE, GOODIX_TIMEOUT, FALSE, error)) {
+        return FALSE;
+    }
+
+    GoodixMessage *receive_message = NULL;
+    if(!fpi_goodix_device_receive_data(dev, &receive_message, error)) {
+        return FALSE;
+    }
+
+    if (!fpi_goodix_device_check_receive_data(message, receive_message, error)) {
+        return FALSE;
+    }
+
+    gboolean is_ec_control_success = receive_message->payload->data[0] != 1;
+
+    if (is_ec_control_success) {
+        *error = FPI_GOODIX_DEVICE_ERROR(1, "EC control failed for state %b", is_enable);
+        return FALSE;
+    }
+
+    return TRUE;
 }
