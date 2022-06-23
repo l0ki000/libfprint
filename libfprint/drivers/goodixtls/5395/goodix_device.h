@@ -82,3 +82,4 @@ gboolean fpi_goodix_device_fdt_execute_operation(FpDevice *dev, enum FingerDetec
 gboolean fpi_goodix_device_upload_config(FpDevice *dev, GByteArray *config, gint timeout_ms, GError **error);
 void fpi_goodix_device_prepare_config(FpDevice *dev, GByteArray *config);
 void fpi_goodix_device_set_calibration_params(FpDevice *dev, GByteArray* otp);
+gboolean fpi_goodix_device_set_sleep_mode(FpDevice *dev, GError **error);

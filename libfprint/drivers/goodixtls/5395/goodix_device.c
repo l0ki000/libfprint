@@ -534,3 +534,9 @@ void fpi_goodix_device_set_calibration_params(FpDevice* dev, GByteArray* payload
 
     priv->calibration_params = params;
 }
+
+gboolean fpi_goodix_device_set_sleep_mode(FpDevice *dev, GError **error) {
+    guint payload[] = {0x01, 0x00};
+    GoodixMessage *message = fpi_goodix_protocol_create_message(0x6, 0, payload, 2);
+    return fpi_goodix_device_send(dev, message, TRUE, 200, FALSE, error);
+}
