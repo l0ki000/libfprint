@@ -604,8 +604,9 @@ GByteArray* fpi_goodix_device_get_finger_detection_data(FpDevice *dev, enum Fing
 //  return payload, touch_flag (first 2 bytes)
 }
 
-GByteArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gboolean hv_enable, gchar use_dac, gboolean adjust_dac, gboolean is_finger, GoodixCalibrationParam *calib_params){
-
+GByteArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gboolean hv_enable, gchar use_dac, gboolean adjust_dac, gboolean is_finger, GError **error){
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
     guint8 op_code;
     guint8 hv_value;
     if (tx_enable) {
@@ -623,9 +624,9 @@ GByteArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gbool
     }
     guint16 dac;
     if (use_dac == 'h') {
-        dac = calib_params->dac_h;
+        dac = priv->calibration_params->dac_h;
     } else if(use_dac == 'l'){
-        dac = calib_params->dac_l;
+        dac = priv->calibration_params->dac_l;
     } else {
 //         raise Exception("Invalid DAC type")
     }
@@ -633,26 +634,25 @@ GByteArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gbool
     g_byte_array_append(request, &op_code, 1);
     g_byte_array_append(request, &hv_value, 1);
     g_byte_array_append(request, (guint8 *)&dac, 2);
-    
-    //     image = tool.decode_image(device.get_image(request, 0.5))
+    return fpi_goodix_protocol_decode_image(fpi_goodix_protocol_get_image(dev, request, 500, error));
 }
 
-gboolean fpi_goodix_protocol_get_image(FpDevice *dev, GByteArray *request, gint timeout_ms, GError **error) {
+GByteArray *fpi_goodix_protocol_get_image(FpDevice *dev, GByteArray *request, gint timeout_ms, GError **error) {
     g_assert(request->len == 4);
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
     GoodixMessage *message = g_malloc0(sizeof(GoodixMessage));
     message->category = 0x2;
     message->command = 0;
     message->payload = request;
-    fpi_goodix_device_send(dev, message, TRUE, 500, FALSE, error);
+    fpi_goodix_device_send(dev, message, TRUE, timeout_ms, FALSE, error);
     message = g_malloc0(sizeof(GoodixMessage));
     if (!fpi_goodix_device_receive_data(dev, &message, error) || message->category != 0x2 || message->command != 0) {
 //      TODO  raise Exception("Not an image message")
-        return FALSE;
+        return NULL;
     }
-        return FALSE;
-//         if self.gtls_context is None or not self.gtls_context.is_connected():
-//             raise Exception("Invalid GTLS connection state")
 
-//         data: bytes = self.gtls_context.decrypt_sensor_data(message.payload)
-//         return data
+//  TODO       if self.gtls_context is None or not self.gtls_context.is_connected():
+//             raise Exception("Invalid GTLS connection state")
+    return fpi_goodix_gtls_decrypt_sensor_data(priv->gtls_params, message->payload, error);
 }

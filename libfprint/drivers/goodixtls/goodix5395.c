@@ -294,7 +294,8 @@ static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     fpi_goodix5395_upload_config(dev, ssm);   
     fp_dbg("Config is uploaded.");
     GError *error = NULL;
-    fpi_goodix_device_get_fdt_base_with_tx(dev, TRUE, &error);
+    GByteArray *fdt_data_tx_enabled = fpi_goodix_device_get_fdt_base_with_tx(dev, TRUE, &error);
+    GByteArray *image_tx_enable = fpi_goodix_device_get_image(dev, TRUE, TRUE, 'l', FALSE, FALSE, &error);
 }
 
 static void fpi_goodix5395_activate_run_state(FpiSsm *ssm, FpDevice *dev) {

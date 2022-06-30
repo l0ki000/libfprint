@@ -15,6 +15,7 @@
 // You should have received a copy of the GNU Lesser General Public
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+#include "goodix_gtls.h"
 
 #include <glib.h>
 
@@ -72,7 +73,7 @@ gboolean fpi_goodix_gtls_derive_key(GoodixGTLSParams *params) {
     
     params->hmac_client_counter_init = (guint16)(session_key->data[0] | session_key->data[1] << 8);
     g_byte_array_remove_range(session_key, 0, 0x2);
-    
+
     params->hmac_server_counter_init = (guint16)(session_key->data[0] | session_key->data[1] << 8);
     g_byte_array_remove_range(session_key, 0, 0x2);
 
@@ -89,4 +90,87 @@ gboolean fpi_goodix_gtls_derive_key(GoodixGTLSParams *params) {
         return FALSE;
     }
     return TRUE;
+}
+
+GByteArray *fpi_goodix_gtls_decrypt_sensor_data(GoodixGTLSParams *params, GByteArray *encrypted_message, GError **error) {
+    guint32 data_type = encrypted_message->data[0] | encrypted_message->data[1] << 0x8 | encrypted_message->data[2] << 0x10 | encrypted_message->data[3] << 0x100;
+    if (data_type != 0xAA01) {
+        return NULL;
+        // TODO  raise Exception("Unexpected data type")
+    }
+    guint32 msg_length = encrypted_message->data[4] | encrypted_message->data[5] << 0x8 | encrypted_message->data[6] << 0x10 | encrypted_message->data[7] << 0x100;
+    if (msg_length != encrypted_message->len) {
+        return NULL;
+        // TODO  raise Exception("Length mismatch")
+    }
+    g_byte_array_remove_range(encrypted_message, 0, 8);
+    GByteArray *encrypted_payload = g_byte_array_new();
+    g_byte_array_append(encrypted_payload, encrypted_message->data, encrypted_message->len - 0x20);
+
+    GByteArray *payload_hmac = g_byte_array_new();
+    g_byte_array_append(payload_hmac, &(encrypted_message->data[encrypted_message->len - 0x20]), 0x20);
+    // TODO fp_dbg("HMAC for encrypted payload: %s", fpi_goodix_protocol_data_to_str(payload_hmac->data, payload_hmac->len));
+
+    GByteArray *gea_encrypted_data = g_byte_array_new();
+    for (size_t block_idx = 0; block_idx < 15; block_idx++) {
+        if (block_idx % 2 == 0) {
+            if (block_idx == 0) {
+                g_byte_array_append(gea_encrypted_data, encrypted_payload->data, 0x3A7);
+                g_byte_array_remove_range(encrypted_payload, 0, 0x3A7);
+            } else if (block_idx == 14) {
+                g_assert(gea_encrypted_data->len == 0x3A7 + 0x3F0 * 13);
+                g_byte_array_append(gea_encrypted_data, encrypted_payload->data, encrypted_payload->len);
+
+            } else {
+                g_byte_array_append(gea_encrypted_data, encrypted_payload->data, 0x3F0);
+                g_byte_array_remove_range(encrypted_payload, 0, 0x3F0);
+            }
+
+        } else {
+            GByteArray *temp = g_byte_array_new();
+            g_byte_array_append(temp, encrypted_payload->data, 0x3F0);
+            g_byte_array_remove_range(encrypted_payload, 0, 0x3F0);
+            GByteArray *decrypt = crypo_utils_AES_128_cbc_decrypt(temp, params->symmetric_key, params->symmetric_iv, error);
+            g_byte_array_free(temp, TRUE);
+            g_byte_array_append(gea_encrypted_data, decrypt->data, decrypt->len);
+            g_byte_array_free(decrypt, TRUE);
+        }
+    }
+    GByteArray *hmac_data = g_byte_array_new();
+    g_byte_array_append(hmac_data, &(params->hmac_server_counter), 4);
+    g_byte_array_append(hmac_data, &(gea_encrypted_data->data[gea_encrypted_data->len - 0x400]), 0x400);
+    GByteArray *computed_hmac = crypto_utils_HMAC_SHA256(params->hmac_key, hmac_data);
+    if (computed_hmac->len != payload_hmac->len || memcmp(computed_hmac->data, payload_hmac->data, computed_hmac->len)) {
+        // TODO raise Exception("HMAC verification failed")
+        return NULL;
+    }
+    // TODO fp_dbg("Encrypted payload HMAC verified");
+    params->hmac_server_counter = (params->hmac_server_counter + 1) & 0xFFFFFFFF;
+
+    // fp_dbg("HMAC server counter is now: %s", fpi_goodix_protocol_data_to_str(params->hmac_server_counter, 2));
+
+    if (gea_encrypted_data->len < 5) {
+        //   TODO      raise Exception("Encrypted payload too short")
+        return NULL;
+    }
+    // The first five bytes are always discarded (alignment?)
+    g_byte_array_remove_range(gea_encrypted_data, 0, 5);
+    guint8 *ptr = &(gea_encrypted_data->data[gea_encrypted_data->len - 4]);
+    guint msg_gea_crc = *ptr << 24 | (ptr)[1] << 16 | ptr[2] << 8 | ptr[3];
+    printf("msg_gea_crc: %x", msg_gea_crc);
+    msg_gea_crc = ptr[0] * 0x100 + ptr[1] + ptr[2] * 0x1000000 + ptr[3] * 0x10000;
+    printf("msg_gea_crc: %x", msg_gea_crc);
+    g_byte_array_remove_range(gea_encrypted_data, gea_encrypted_data->len - 4, 4);
+
+    // fp_dbg("GEA data CRC: %s", fpi_goodix_protocol_data_to_str(&msg_gea_crc, 4));
+    //  TODO
+    guint computed_gea_crc = crypto_utils_crc32_mpeg2_calc((gea_encrypted_data->data), gea_encrypted_data->len);
+    if(computed_gea_crc != msg_gea_crc) {
+          //          raise Exception("CRC check failed")
+          return NULL;
+    }
+    //      logging.debug("GEA data CRC verified")
+    gint32 gea_key = gea_encrypted_data->data[0] | gea_encrypted_data->data[1] << 0x10 | gea_encrypted_data->data[2] << 0x100 | gea_encrypted_data->data[3] << 0x1000;
+    // fp_dbg("GEA key: %x", gea_key);
+    return ctypto_utils_gea_decrypt(gea_key, gea_encrypted_data);
 }

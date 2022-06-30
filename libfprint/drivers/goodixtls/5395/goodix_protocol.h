@@ -18,6 +18,8 @@
 
 #pragma once
 
+#include <glib.h>
+
 #define GOODIX_EP_OUT_MAX_BUF_SIZE 0x40
 #define GOODIX_EP_IN_MAX_BUF_SIZE 0x40
 
