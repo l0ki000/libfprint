@@ -1,6 +1,7 @@
 // Goodix 5395 driver protocol for libfprint
 
 // Copyright (C) 2022 Anton Turko <anton.turko@proton.me>
+// Copyright (C) 2022 Juri Sacchetta <jurisacchetta@gmail.com>
 
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -213,6 +214,8 @@ gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean 
     priv->reply = reply;
 
     fpi_goodix_protocol_encode(message, calc_checksum, TRUE, &data, &data_len);
+    g_byte_array_free(message->payload, TRUE);
+    g_free(message);
 
     gboolean is_success = fpi_goodix_device_write(dev, data, data_len, timeout_ms, error);
 
@@ -354,6 +357,7 @@ GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint32 read_type, GError 
     }
     GByteArray *msg_payload = g_byte_array_new();
     g_byte_array_append(msg_payload, message->payload->data, message->payload->len);
+    fpi_goodix_protocol_free_message(message);
     guint32 read_type_recv = (guint32)(msg_payload->data[0] | msg_payload->data[1] << 8 | msg_payload->data[2] << 16 | msg_payload->data[3] << 32);
     guint32 payload_size_recv  = (guint32)(msg_payload->data[4] | msg_payload->data[5] << 8 | msg_payload->data[6] << 16 | msg_payload->data[7] << 32);
     
@@ -366,60 +370,7 @@ GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint32 read_type, GError 
         return FALSE;
     }
     g_byte_array_remove_range(msg_payload, 0, 8);
-    g_free(message);
     return msg_payload;
-}
-
-gboolean fpi_goodix_device_fdt_execute_operation(FpDevice *dev, enum FingerDetectionOperation operation, GByteArray *fdt_base, gint timeout_ms, GError **error) {
-
-    guint8 op_code;
-    switch(operation) {
-
-        case DOWN:
-            break;
-        case UP:
-            break;
-        case MANUAL:
-            break;
-    }
-
-    GByteArray *payload = g_byte_array_new();
-    g_byte_array_append(payload, &op_code, 1);
-    g_byte_array_append(payload, 1, 1);
-    g_byte_array_append(payload, fdt_base->data, fdt_base->len);
-
-    GoodixMessage *message = fpi_goodix_protocol_create_message(0x3, operation, payload->data, payload->len);
-    if (!fpi_goodix_device_send(dev, message, TRUE, timeout_ms, FALSE, error)) {
-        return FALSE;
-    }
-
-    if (operation != MANUAL) {
-        return FALSE;
-    }
-
-    return TRUE;
-
-}
-
-gboolean fpi_goodix_device_finger_detection_data(FpDevice *dev, enum FingerDetectionOperation operation, GByteArray *fdt_base, GError *error) {
-    GoodixMessage *receive_message = NULL;
-    if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
-        return FALSE;
-    }
-
-    if (receive_message->category != 0x3 || receive_message->command != operation) {
-        g_set_error(&error, 1, 1, "Not a finger detection reply. Command %02x", receive_message->command);
-        return FALSE;
-    }
-
-    if (receive_message->payload->len != 28) {
-        g_set_error(&error, 1, 1, "Finger detection payload wrong length. Command %02x", receive_message->command);
-        return FALSE;
-    }
-
-    guint8 irq_status = receive_message->payload->data[2];
-
-    return TRUE;
 }
 
 gboolean fpi_goodix_device_upload_config(FpDevice *dev, GByteArray *config, gint timeout_ms, GError **error) {
@@ -492,7 +443,7 @@ void fpi_goodix_device_prepare_config(FpDevice *dev, GByteArray *config) {
 }
 
 void fpi_goodix_device_set_calibration_params(FpDevice* dev, GByteArray* payload) {
-    FpiGoodixDevice *self = FPI_GOODIX_DEVICE_GET_CLASS(dev);
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
 
     guint8 *otp = payload->data;
@@ -577,4 +528,131 @@ gboolean fpi_goodix_device_ec_control(FpDevice *dev, gboolean is_enable, GError 
     }
 
     return TRUE;
+}
+
+GByteArray *fpi_goodix_device_get_fdt_base_with_tx(FpDevice *dev, gboolean tx_enable, GError **error){
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+
+    GByteArray *payload = g_byte_array_new();
+    g_byte_array_append(payload, priv->calibration_params->fdt_base_manual, FDT_BASE_LEN);
+
+    GByteArray *fdt_base = fpi_goodix_device_execute_fdt_operation(dev, MANUAL, tx_enable, payload, 500, error);
+    if(fdt_base->len == 0) {
+        //TODO error
+    }
+    return fdt_base;
+}
+
+GByteArray *fpi_goodix_device_execute_fdt_operation(FpDevice *dev, enum FingerDetectionOperation fdt_op, gboolean tx_enable, GByteArray *fdt_base, gint timeout_ms, GError **error){
+    guint8 op_code = 0xD;
+        g_assert(fdt_base->len == 24);
+    switch (fdt_op) {
+        case DOWN:
+            op_code = 0xC;
+            break;
+        case UP:
+            op_code = 0xE;
+            break;
+        case MANUAL:
+            op_code = 0xD;
+            if (!tx_enable) {
+                op_code = op_code | (guint8)0x80;
+            }
+            break;
+    }
+    GByteArray *payload = g_byte_array_new();
+    guint8 one = 0x1;
+    g_byte_array_append(payload, &op_code, 1);
+    g_byte_array_append(payload, &one, 1);
+    g_byte_array_append(payload, fdt_base->data, fdt_base->len);
+    GoodixMessage *message = g_malloc0(sizeof(GoodixMessage));
+    message->category = 0x3;
+    message->command = fdt_op;
+    message->payload = payload;
+    if (!fpi_goodix_device_send(dev, message, TRUE, timeout_ms, FALSE, error)) {
+        return FALSE;
+    }
+    if (fdt_op != MANUAL) {
+        return NULL;
+    }
+    GByteArray *fdt_data = fpi_goodix_device_get_finger_detection_data(dev, fdt_op, error);
+    g_byte_array_remove_range(fdt_data, 0, 2); //remove the touch_flag bytes
+    return fdt_data;
+}
+
+GByteArray* fpi_goodix_device_get_finger_detection_data(FpDevice *dev, enum FingerDetectionOperation fdt_op, GError **error){
+    GoodixMessage *replay = g_malloc0(sizeof(GoodixMessage));
+    if (!fpi_goodix_device_receive_data(dev, &replay, error) || replay->category != 0x3 || replay->command != fdt_op) {
+        return FALSE;
+    }
+    if(replay->payload->len != 8) {
+        //TODO raise Exception("Finger detection payload wrong length")
+    }
+    GByteArray *payload = g_byte_array_new();
+    g_byte_array_append(payload, replay->payload->data, replay->payload->len);
+    fpi_goodix_protocol_free_message(replay);
+
+    guint16 irq_status = (guint16)(payload->data[0] | payload->data[1] << 8);
+    g_byte_array_remove_range(payload, 0, 2);
+    fp_dbg("IRQ status: %02x", irq_status);
+    g_byte_array_remove_range(payload, 0, 2);
+
+    guint16 touch_flag = (guint16)(payload->data[0] | payload->data[1] << 8);
+    fp_dbg("Touch flag: %02x", touch_flag);
+    return payload;
+//  return payload, touch_flag (first 2 bytes)
+}
+
+GByteArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gboolean hv_enable, gchar use_dac, gboolean adjust_dac, gboolean is_finger, GError **error){
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    guint8 op_code;
+    guint8 hv_value;
+    if (tx_enable) {
+        op_code = 0x1;
+    } else {
+        op_code = 0x81;
+    }
+    if(is_finger){
+        op_code = op_code | (guint8)0x40;
+    }
+    if (hv_enable){
+        hv_value = 0x6;
+    } else {
+        hv_value = 0x10;
+    }
+    guint16 dac;
+    if (use_dac == 'h') {
+        dac = priv->calibration_params->dac_h;
+    } else if(use_dac == 'l'){
+        dac = priv->calibration_params->dac_l;
+    } else {
+//         raise Exception("Invalid DAC type")
+    }
+    GByteArray *request = g_byte_array_new();
+    g_byte_array_append(request, &op_code, 1);
+    g_byte_array_append(request, &hv_value, 1);
+    g_byte_array_append(request, (guint8 *)&dac, 2);
+    return fpi_goodix_protocol_decode_image(fpi_goodix_protocol_get_image(dev, request, 500, error));
+}
+
+GByteArray *fpi_goodix_protocol_get_image(FpDevice *dev, GByteArray *request, gint timeout_ms, GError **error) {
+    g_assert(request->len == 4);
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    GoodixMessage *message = g_malloc0(sizeof(GoodixMessage));
+    message->category = 0x2;
+    message->command = 0;
+    message->payload = request;
+    fpi_goodix_device_send(dev, message, TRUE, timeout_ms, FALSE, error);
+    message = g_malloc0(sizeof(GoodixMessage));
+    if (!fpi_goodix_device_receive_data(dev, &message, error) || message->category != 0x2 || message->command != 0) {
+//      TODO  raise Exception("Not an image message")
+        return NULL;
+    }
+
+//  TODO       if self.gtls_context is None or not self.gtls_context.is_connected():
+//             raise Exception("Invalid GTLS connection state")
+    return fpi_goodix_gtls_decrypt_sensor_data(priv->gtls_params, message->payload, error);
 }

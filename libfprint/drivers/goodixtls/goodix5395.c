@@ -181,7 +181,7 @@ static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
 
     guint8 *otp = receive_message->payload->data;
     guint otp_length = receive_message->payload->len;
-    if(!fpi_goodix_device_verify_otp_hash(otp, otp_length, goodix_5395_otp_hash)) {
+    if(!fpi_goodix_protocol_verify_otp_hash(otp, otp_length, goodix_5395_otp_hash)) {
         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_SENSOR, "OTP hash incorrect %s",
                                                          fpi_goodix_protocol_data_to_str(otp, otp_length)))
     }
@@ -293,7 +293,9 @@ static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     //upload config
     fpi_goodix5395_upload_config(dev, ssm);   
     fp_dbg("Config is uploaded.");
-
+    GError *error = NULL;
+    GByteArray *fdt_data_tx_enabled = fpi_goodix_device_get_fdt_base_with_tx(dev, TRUE, &error);
+    GByteArray *image_tx_enable = fpi_goodix_device_get_image(dev, TRUE, TRUE, 'l', FALSE, FALSE, &error);
 }
 
 static void fpi_goodix5395_activate_run_state(FpiSsm *ssm, FpDevice *dev) {
