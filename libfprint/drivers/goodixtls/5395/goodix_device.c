@@ -213,8 +213,7 @@ gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean 
     priv->reply = reply;
 
     fpi_goodix_protocol_encode(message, calc_checksum, TRUE, &data, &data_len);
-    g_byte_array_free(message->payload, TRUE);
-    g_free(message);
+    fpi_goodix_protocol_free_message(message);
 
     gboolean is_success = fpi_goodix_device_write(dev, data, data_len, timeout_ms, error);
 
@@ -224,9 +223,8 @@ gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean 
         if (is_success) {
             is_success = fpi_goodix_protocol_check_ack(ackMessage, error);
         }
-        g_free(ackMessage);
+        fpi_goodix_protocol_free_message(ackMessage);
     }
-    g_free(message);
 
     return is_success;
 }

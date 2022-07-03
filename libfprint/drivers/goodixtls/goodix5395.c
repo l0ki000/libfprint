@@ -114,7 +114,7 @@ static void fpi_device_goodixtls5395_device_enable(FpDevice *dev, FpiSsm *ssm) {
     if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
-
+    fp_dbg("Check!");
     if (receive_message->category == 0x8 && receive_message->command == 0x1) {
         int chip_id = fpi_goodix_protocol_decode_u32(receive_message->payload->data, receive_message->payload->len);
         if (chip_id >> 8 != 0x220C) {
@@ -125,7 +125,7 @@ static void fpi_device_goodixtls5395_device_enable(FpDevice *dev, FpiSsm *ssm) {
     } else {
         fpi_ssm_mark_failed(ssm, FPI_GOODIX_DEVICE_ERROR(DEVICE_ENABLE, "Not a register read message for command %02x", receive_message->command));
     }
-    g_free(receive_message);
+    fpi_goodix_protocol_free_message(receive_message);
 
 }
 
@@ -155,7 +155,7 @@ static void fpi_device_goodixtls5395_check_firmware_version(FpDevice *dev, FpiSs
         fpi_ssm_mark_failed(ssm, error);
     }
 
-    g_free(receive_message);
+    fpi_goodix_protocol_free_message(receive_message);
 }
 
 static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
@@ -174,7 +174,7 @@ static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
     }
 
     if (receive_message->category != 0xA || receive_message->command != 0x3) {
-        g_free(receive_message);
+        fpi_goodix_protocol_free_message(receive_message);
         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_SENSOR, "Not a register read message for command %02x", receive_message->command))
     }
     fp_dbg("OTP: %s", fpi_goodix_protocol_data_to_str(receive_message->payload->data, receive_message->payload->len));
@@ -190,7 +190,7 @@ static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
 
     fpi_ssm_next_state(ssm);
 
-    g_free(receive_message);
+    fpi_goodix_protocol_free_message(receive_message);
 }
 
 static void fpi_device_goodixtls5395_check_psk(FpDevice *dev, FpiSsm *ssm) {

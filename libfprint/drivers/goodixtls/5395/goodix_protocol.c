@@ -119,7 +119,6 @@ GoodixMessage *fpi_goodix_protocol_create_message(guint8 category, guint8 comman
     message->command = command;
     message->payload = g_byte_array_new();
     g_byte_array_append(message->payload, payload, length);
-    fp_dbg("Config before %s", fpi_goodix_protocol_data_to_str(payload, length));
     return message;
 }
 
