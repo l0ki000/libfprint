@@ -43,8 +43,8 @@ typedef struct __attribute__((__packed__)) _GoodixCalibrationParam{
     guint8 delta_up;
     guint8 delta_img;
     guint8 delta_nav;
-    guint8 dac_h;
-    guint8 dac_l;
+    guint16 dac_h;
+    guint16 dac_l;
     guint8 dac_delta;
     guint8 *fdt_base_down;
     guint8 *fdt_base_up;
