@@ -131,7 +131,7 @@ GoodixMessage *fpi_goodix_protocol_create_message_byte_array(guint8 category, gu
     return message;
 }
 
-static guint8 fpi_goodix_device_compute_otp_hash(const guint8 *otp, guint otp_length, const guint8 otp_hash[]) {
+static guint8 fpi_goodix_protocol_compute_otp_hash(const guint8 *otp, guint otp_length, const guint8 otp_hash[]) {
     guint8 checksum = 0;
     for (guint i = 0; i < otp_length; i++) {
         if (i == 25) {
@@ -142,13 +142,13 @@ static guint8 fpi_goodix_device_compute_otp_hash(const guint8 *otp, guint otp_le
     return ~checksum & 0xFF;
 }
 
-gboolean fpi_goodix_device_verify_otp_hash(const guint8 *otp, guint otp_length, const guint8 otp_hash[]) {
+gboolean fpi_goodix_protocol_verify_otp_hash(const guint8 *otp, guint otp_length, const guint8 otp_hash[]) {
     guint8 received_hash = otp[25];
-    guint8 computed_hash = fpi_goodix_device_compute_otp_hash(otp, otp_length, otp_hash);
+    guint8 computed_hash = fpi_goodix_protocol_compute_otp_hash(otp, otp_length, otp_hash);
     return received_hash == computed_hash;
 }
 
-GByteArray* fpi_goodix_device_decode_image(const GByteArray *image) {
+GByteArray* fpi_goodix_protocol_decode_image(const GByteArray *image) {
     GByteArray *decoded_image = g_byte_array_new();
     for(gint i = 0; i < image->len; i += 6) {
         guint8* chunk = image->data + i;
@@ -159,4 +159,9 @@ GByteArray* fpi_goodix_device_decode_image(const GByteArray *image) {
     }
 
     return decoded_image;
+}
+
+void fpi_goodix_protocol_free_message(GoodixMessage *message) {
+    g_byte_array_free(message->payload, TRUE);
+    g_free(message);
 }

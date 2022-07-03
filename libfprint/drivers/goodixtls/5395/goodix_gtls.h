@@ -19,6 +19,7 @@
 #pragma once
 
 #include "goodix_protocol.h"
+#include <glib.h>
 
 enum EstablishConnectionStates {
     CLIENT_HELLO,
@@ -39,8 +40,8 @@ typedef struct __attribute__((__packed__)) __GoodixGTLSParams
     GByteArray *hmac_key;
     guint16 hmac_client_counter_init;
     guint16 hmac_server_counter_init;
-    gint hmac_client_counter;
-    gint hmac_server_counter;
+    guint hmac_client_counter;
+    guint hmac_server_counter;
     GByteArray *psk;
 } GoodixGTLSParams;
 
@@ -48,3 +49,4 @@ GoodixGTLSParams *fpi_goodix_device_gtls_init_params(void);
 GByteArray *fpi_goodix_gtls_create_hello_message(void);
 void fpi_goodix_gtls_decode_server_hello(GoodixGTLSParams *params, GByteArray *recv_mcu_payload);
 gboolean fpi_goodix_gtls_derive_key(GoodixGTLSParams *params);
+GByteArray *fpi_goodix_gtls_decrypt_sensor_data(GoodixGTLSParams *params, GByteArray *encrypted_message, GError **error);

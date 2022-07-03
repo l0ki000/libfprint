@@ -1,6 +1,7 @@
 // Goodix 5395 driver for libfprint
 
 // Copyright (C) 2022 Anton Turko <anton.turko@proton.me>
+// Copyright (C) 2022 Juri Sacchetta <jurisacchetta@gmail.com>
 
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -25,6 +26,16 @@
 #define FAIL_SSM_AND_RETURN(ssm, error) fpi_ssm_mark_failed(ssm, error); return;
 #define FPI_GOODIX_DEVICE_ERROR(code, format, ...)  g_error_new(GOODIX_DEVICE_ERROR_DOMAIN, code, format, __VA_ARGS__)
 
+G_DECLARE_DERIVABLE_TYPE(FpiGoodixDevice, fpi_goodix_device, FPI, GOODIX_DEVICE, FpImageDevice);
+
+#define FPI_TYPE_GOODIX_DEVICE (fpi_goodix_device_get_type())
+
+enum FingerDetectionOperation {
+    DOWN = 1,
+    UP = 2,
+    MANUAL = 3
+};
+
 typedef struct __attribute__((__packed__)) _GoodixCalibrationParam{
     guint16 tcode;
     guint8 delta_fdt;
@@ -38,31 +49,16 @@ typedef struct __attribute__((__packed__)) _GoodixCalibrationParam{
     guint8 *fdt_base_down;
     guint8 *fdt_base_up;
     guint8 *fdt_base_manual;
-
     guint8 *calib_image;
-
-
 } GoodixCalibrationParam;
-
-G_DECLARE_DERIVABLE_TYPE(FpiGoodixDevice, fpi_goodix_device, FPI, GOODIX_DEVICE, FpImageDevice);
-
-#define FPI_TYPE_GOODIX_DEVICE (fpi_goodix_device_get_type())
-
 
 struct _FpiGoodixDeviceClass
 {
     FpImageDeviceClass parent;
-
     gint interface;
     guint8 ep_in;
     guint8 ep_out;
     gboolean is_psk_valid;
-};
-
-enum FingerDetectionOperation {
-    DOWN,
-    UP,
-    MANUAL
 };
 
 typedef void (*GoodixDeviceReceiveCallback)(FpDevice *dev, GoodixMessage *message, GError *error);
@@ -83,3 +79,8 @@ gboolean fpi_goodix_device_upload_config(FpDevice *dev, GByteArray *config, gint
 void fpi_goodix_device_prepare_config(FpDevice *dev, GByteArray *config);
 void fpi_goodix_device_set_calibration_params(FpDevice *dev, GByteArray* otp);
 gboolean fpi_goodix_device_set_sleep_mode(FpDevice *dev, GError **error);
+GByteArray *fpi_goodix_device_get_fdt_base_with_tx(FpDevice *dev, gboolean tx_enable, GError **error);
+GByteArray *fpi_goodix_device_execute_fdt_operation(FpDevice *dev, enum FingerDetectionOperation fdt_op, gboolean tx_enable, GByteArray *fdt_base, gint timeout_ms, GError **error);
+GByteArray *fpi_goodix_device_get_finger_detection_data(FpDevice *dev, enum FingerDetectionOperation fdt_op, GError **error);
+GByteArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gboolean hv_enable, gchar use_dac, gboolean adjust_dac, gboolean is_finger, GError **error);
+GByteArray *fpi_goodix_protocol_get_image(FpDevice *dev, GByteArray *request, gint timeout_ms, GError **error);
