@@ -296,6 +296,14 @@ static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
 
 }
 
+static void fpi_goodix5395_set_sleep_mode(FpDevice* dev, FpiSsm* ssm) {
+    GError *error = NULL;
+    if (!fpi_goodix_device_set_sleep_mode(dev, &error)) {
+        FAIL_SSM_AND_RETURN(ssm, error)
+    }
+    fpi_ssm_next_state(ssm);
+}
+
 static void fpi_goodix5395_activate_run_state(FpiSsm *ssm, FpDevice *dev) {
   switch (fpi_ssm_get_cur_state(ssm)) {
       case INIT_DEVICE:
@@ -328,7 +336,7 @@ static void fpi_goodix5395_activate_run_state(FpiSsm *ssm, FpDevice *dev) {
           fpi_goodix5395_update_all_base(dev, ssm);
           break;
       case SET_SLEEP_MODE:
-          fp_dbg("Set sleep mode.");
+          fpi_goodix5395_set_sleep_mode(dev, ssm);
           break;
   }
 }

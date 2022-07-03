@@ -73,12 +73,11 @@ static void fpi_goodix_device_class_init(FpiGoodixDeviceClass *class) { }
 
 // ----- METHODS -----
 
-static gboolean fpi_goodix_device_check_receive_data(GoodixMessage *send_message, GoodixMessage *receive_message, GError **error) {
-    gboolean is_success_reply = send_message->category == receive_message->category 
-                                    && send_message->command == receive_message->command;
+static gboolean fpi_goodix_device_check_receive_data(guint8 category, guint8 command, GoodixMessage *receive_message, GError **error) {
+    gboolean is_success_reply = category == receive_message->category && command == receive_message->command;
 
     if (!is_success_reply) {
-        *error = FPI_GOODIX_DEVICE_ERROR(1, "Category and command are different for send and receive message. \n Send message category %02x, command %02x. \n Receive message category %02x, command %02x", send_message->category, send_message->command, receive_message->category, receive_message->command);
+        *error = FPI_GOODIX_DEVICE_ERROR(1, "Category and command are different for send and receive message. \n Send message category %02x, command %02x. \n Receive message category %02x, command %02x", category, command, receive_message->category, receive_message->command);
     }
     return is_success_reply; 
 }
@@ -224,6 +223,7 @@ gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean 
         }
         g_free(ackMessage);
     }
+    g_free(message);
 
     return is_success;
 }
@@ -348,8 +348,7 @@ void fpi_goodix_device_send_mcu(FpDevice *dev, const guint32 data_type, GByteArr
 GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint32 read_type, GError *error) {
     fp_dbg("recv_mcu_payload()");
     GoodixMessage *message = NULL;
-    if (!fpi_goodix_device_receive_data(dev, &message, &error)
-        || message->category != 0xD || message->command != 1) {
+    if (!fpi_goodix_device_receive_data(dev, &message, &error) || !fpi_goodix_device_check_receive_data(0xD, 1, message, &error)) {
         return FALSE;
     }
     GByteArray *msg_payload = g_byte_array_new();
@@ -554,18 +553,17 @@ gboolean fpi_goodix_device_set_sleep_mode(FpDevice *dev, GError **error) {
 gboolean fpi_goodix_device_ec_control(FpDevice *dev, gboolean is_enable, GError **error) {
     guint8 control_val = is_enable ? 1 : 0;
     guint8 payload[] = {control_val, control_val, 0x00};
+    guint8 category = 0xA;
+    guint8 command = 7;
 
-    GoodixMessage *message = fpi_goodix_protocol_create_message(0xA, 7, payload, sizeof(payload));
+    GoodixMessage *message = fpi_goodix_protocol_create_message(category, command, payload, sizeof(payload));
     if(!fpi_goodix_device_send(dev, message, TRUE, GOODIX_TIMEOUT, FALSE, error)) {
         return FALSE;
     }
 
     GoodixMessage *receive_message = NULL;
-    if(!fpi_goodix_device_receive_data(dev, &receive_message, error)) {
-        return FALSE;
-    }
-
-    if (!fpi_goodix_device_check_receive_data(message, receive_message, error)) {
+    if(!fpi_goodix_device_receive_data(dev, &receive_message, error) 
+        || !fpi_goodix_device_check_receive_data(category, command, receive_message, error)) {
         return FALSE;
     }
 
