@@ -301,6 +301,25 @@ static gboolean fpi_goodix5395_is_fdt_base_valid(const GByteArray *fdt_base_1, c
     return TRUE;
 }
 
+static void fpi_goodix5395_validate_base_img(GByteArray *base_image_1, GByteArray *base_image_2, guint8 image_threshold) {
+    // assert len(base_image_1) == SENSOR_WIDTH * SENSOR_HEIGHT
+    // assert len(base_image_2) == SENSOR_WIDTH * SENSOR_HEIGHT
+
+    // diff_sum = 0
+    // for row_idx in range(2, SENSOR_HEIGHT - 2):
+    //     for col_idx in range(2, SENSOR_WIDTH - 2):
+    //         offset = row_idx * SENSOR_WIDTH + col_idx
+    //         image_val_1 = base_image_1[offset]
+    //         image_val_2 = base_image_2[offset]
+    //         diff_sum += abs(image_val_2 - image_val_1)
+
+    // avg = diff_sum / ((SENSOR_HEIGHT - 4) * (SENSOR_WIDTH - 4))
+    // logging.debug(f"Checking image data, avg: {avg:.2f}, threshold: {image_threshold}")
+    // if avg > image_threshold:
+    //     raise Exception("Invalid base image")
+
+}
+
 static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     //upload config
     fpi_goodix5395_upload_config(dev, ssm);   
@@ -316,11 +335,22 @@ static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(UPDATE_ALL_BASE, "Invalid FDT, is_valid_fdt: %d", is_fdt_valid))
     }
 
+    GByteArray *image_tx_disabled = fpi_goodix_device_get_image(dev, FALSE, FALSE, 'l', FALSE, FALSE, &error);
+    fpi_goodix5395_validate_base_img(image_tx_enable, image_tx_disabled, params->delta_img);
+    GByteArray *fdt_data_tx_enabled_2 = fpi_goodix_device_get_fdt_base_with_tx(dev, TRUE, &error);
+    is_fdt_valid = fpi_goodix5395_is_fdt_base_valid(fdt_data_tx_enabled_2, fdt_data_tx_disabled, params->delta_fdt);
+    fp_dbg("Check fdt data %d", is_fdt_valid);
+    if (!is_fdt_valid) {
+        FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(UPDATE_ALL_BASE, "Invalid FDT, is_valid_fdt: %d", is_fdt_valid))
+    }    
+
+
     GByteArray *generated_fdt_base = fpi_goodix_protocol_generate_fdt_base(fdt_data_tx_enabled);
     fpi_goodix_device_update_bases(dev, generated_fdt_base);
     params->calib_image = image_tx_enable;
     fp_dbg("FDT manual base: %s", fpi_goodix_protocol_data_to_str(params->fdt_base_manual, params->fdt_base_manual->len));
     fp_dbg("Decoding and saving calibration image");
+    //TODO: maybe need save image to check?
 }
 
 static void fpi_goodix5395_set_sleep_mode(FpDevice* dev, FpiSsm* ssm) {
