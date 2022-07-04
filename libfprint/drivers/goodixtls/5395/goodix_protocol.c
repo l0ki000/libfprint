@@ -150,12 +150,17 @@ gboolean fpi_goodix_protocol_verify_otp_hash(const guint8 *otp, guint otp_length
 
 GByteArray* fpi_goodix_protocol_decode_image(const GByteArray *image) {
     GByteArray *decoded_image = g_byte_array_new();
-    for(gint i = 0; i < image->len; i += 6) {
+    guint8 temp;
+    for (gint i = 0; i < image->len; i += 6) {
         guint8* chunk = image->data + i;
-        g_byte_array_append(decoded_image, ((chunk[0] & 0xf) << 8) + chunk[1], 1);
-        g_byte_array_append(decoded_image, (chunk[3] << 4) + (chunk[0] >> 4), 1);
-        g_byte_array_append(decoded_image, ((chunk[5] & 0xf) << 8) + chunk[2], 1);
-        g_byte_array_append(decoded_image, (chunk[4] << 4) + (chunk[5] >> 4), 1);
+        temp = ((chunk[0] & 0xf) << 8) + chunk[1];
+        g_byte_array_append(decoded_image, &temp, 1);
+        temp = (chunk[3] << 4) + (chunk[0] >> 4);
+        g_byte_array_append(decoded_image, &temp, 1);
+        temp = ((chunk[5] & 0xf) << 8) + chunk[2];
+        g_byte_array_append(decoded_image, &temp, 1);
+        temp = (chunk[4] << 4) + (chunk[5] >> 4);
+        g_byte_array_append(decoded_image, &temp, 1);
     }
 
     return decoded_image;

@@ -1,6 +1,7 @@
 // Goodix 5395 driver protocol for libfprint
 
 // Copyright (C) 2022 Anton Turko <anton.turko@proton.me>
+// Copyright (C) 2022 Juri Sacchetta <jurisacchetta@gmail,com>
 
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
