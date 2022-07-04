@@ -262,12 +262,8 @@ static void fpi_device_goodixtls5395_write_psk(FpDevice *dev, FpiSsm *ssm) {
     }
 
     GoodixMessage *receive_message = NULL;
-    if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
+    if (!fpi_goodix_device_receive_data(dev, &receive_message, &error) || !fpi_goodix_device_check_receive_data(0xE, 1, receive_message, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
-    }
-
-    if (receive_message->category != 0xE || receive_message->command != 1) {
-        FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(WRITE_PSK, "Not a production write reply command: 0%02x", receive_message->command))
     }
 
     if (receive_message->payload->data[0] != 0) {
@@ -289,6 +285,22 @@ static void fpi_goodix5395_upload_config(FpDevice* dev, FpiSsm* ssm) {
     }
 }
 
+static gboolean fpi_goodix5395_is_fdt_base_valid(const GByteArray *fdt_base_1, const GByteArray *fdt_base_2, gint max_delta) {
+    if (fdt_base_1->len != fdt_base_2->len) {
+        return FALSE;;
+    }
+    fp_dbg("Checking FDT data, max delta: %d", max_delta);
+    for(gint i = 0; i < fdt_base_1->len; i += 2) {
+        guint16 fdt_val_1 = fdt_base_1->data[i] | fdt_base_1->data[i + 1] << 8;
+        guint16 fdt_val_2 = fdt_base_2->data[i] | fdt_base_2->data[i + 1] << 8;
+        guint16 delta = abs((fdt_val_1 >> 1) - (fdt_val_2 >> 1));
+        if (delta > max_delta) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
 static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     //upload config
     fpi_goodix5395_upload_config(dev, ssm);   
@@ -296,6 +308,10 @@ static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     GError *error = NULL;
     GByteArray *fdt_data_tx_enabled = fpi_goodix_device_get_fdt_base_with_tx(dev, TRUE, &error);
     GByteArray *image_tx_enable = fpi_goodix_device_get_image(dev, TRUE, TRUE, 'l', FALSE, FALSE, &error);
+    GByteArray *fdt_data_tx_disabled = fpi_goodix_device_get_fdt_base_with_tx(dev, FALSE, &error);
+    GoodixCalibrationParam *params = fpi_goodix_device_get_calibration_params(dev);
+    fp_dbg("Check fdt data %d", fpi_goodix5395_is_fdt_base_valid(fdt_data_tx_enabled, fdt_data_tx_disabled, params->delta_fdt));
+
 }
 
 static void fpi_goodix5395_set_sleep_mode(FpDevice* dev, FpiSsm* ssm) {

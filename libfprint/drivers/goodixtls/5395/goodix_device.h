@@ -84,3 +84,5 @@ GByteArray *fpi_goodix_device_execute_fdt_operation(FpDevice *dev, enum FingerDe
 GByteArray *fpi_goodix_device_get_finger_detection_data(FpDevice *dev, enum FingerDetectionOperation fdt_op, GError **error);
 GByteArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gboolean hv_enable, gchar use_dac, gboolean adjust_dac, gboolean is_finger, GError **error);
 GByteArray *fpi_goodix_protocol_get_image(FpDevice *dev, GByteArray *request, gint timeout_ms, GError **error);
+gboolean fpi_goodix_device_check_receive_data(guint8 category, guint8 command, GoodixMessage *receive_message, GError **error);
+GoodixCalibrationParam *fpi_goodix_device_get_calibration_params(FpDevice *dev);

@@ -74,7 +74,7 @@ static void fpi_goodix_device_class_init(FpiGoodixDeviceClass *class) { }
 
 // ----- METHODS -----
 
-static gboolean fpi_goodix_device_check_receive_data(guint8 category, guint8 command, GoodixMessage *receive_message, GError **error) {
+gboolean fpi_goodix_device_check_receive_data(guint8 category, guint8 command, GoodixMessage *receive_message, GError **error) {
     gboolean is_success_reply = category == receive_message->category && command == receive_message->command;
 
     if (!is_success_reply) {
@@ -378,12 +378,7 @@ gboolean fpi_goodix_device_upload_config(FpDevice *dev, GByteArray *config, gint
     }
 
     GoodixMessage *receive_message = NULL;
-    if (!fpi_goodix_device_receive_data(dev, &receive_message, error)) {
-        return FALSE;
-    }
-    if (receive_message->category != 0x9 && receive_message->command != 0) {
-        *error = FPI_GOODIX_DEVICE_ERROR(1, "Not a config message. Expected category %02x command %02x, received category %02x and command %02x", 
-            0x9, 0, receive_message->category, receive_message->command); 
+    if (!fpi_goodix_device_receive_data(dev, &receive_message, error) || !fpi_goodix_device_check_receive_data(0x9, 0, receive_message, error)) {
         return FALSE;
     }
     if (receive_message->payload->data[0] != 1) {
@@ -643,7 +638,7 @@ GByteArray *fpi_goodix_protocol_get_image(FpDevice *dev, GByteArray *request, gi
     message->payload = request;
     fpi_goodix_device_send(dev, message, TRUE, timeout_ms, FALSE, error);
     message = g_malloc0(sizeof(GoodixMessage));
-    if (!fpi_goodix_device_receive_data(dev, &message, error) || message->category != 0x2 || message->command != 0) {
+    if (!fpi_goodix_device_receive_data(dev, &message, error) || !fpi_goodix_device_check_receive_data(0x2, 0, message, error)) {
 //      TODO  raise Exception("Not an image message")
         return NULL;
     }
@@ -651,4 +646,10 @@ GByteArray *fpi_goodix_protocol_get_image(FpDevice *dev, GByteArray *request, gi
 //  TODO       if self.gtls_context is None or not self.gtls_context.is_connected():
 //             raise Exception("Invalid GTLS connection state")
     return fpi_goodix_gtls_decrypt_sensor_data(priv->gtls_params, message->payload, error);
+}
+
+GoodixCalibrationParam *fpi_goodix_device_get_calibration_params(FpDevice *dev) {
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    return priv->calibration_params;
 }
