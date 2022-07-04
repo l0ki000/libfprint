@@ -52,3 +52,4 @@ GoodixMessage *fpi_goodix_protocol_create_message_byte_array(guint8 category, gu
 GByteArray* fpi_goodix_protocol_decode_image(const GByteArray *image);
 gboolean fpi_goodix_protocol_verify_otp_hash(const guint8 *otp, guint otp_length, const guint8 otp_hash[]);
 void fpi_goodix_protocol_free_message(GoodixMessage *message);
+GByteArray *fpi_goodix_protocol_generate_fdt_base(const GByteArray *fdt_data);

@@ -151,7 +151,7 @@ GByteArray* fpi_goodix_protocol_decode_image(const GByteArray *image) {
     fp_dbg("Decode image. length: %d", image->len);
     const gint CHUNK_SIZE = 6;
     GByteArray *decoded_image = g_byte_array_new();
-    guint8 *buffer = g_malloc0(4);
+    guint8 buffer[4] = {};
     for(gint i = 0; i < image->len; i += CHUNK_SIZE) {
         guint8* chunk = image->data + i;
         buffer[0] = ((chunk[0] & 0xf) << 8) + chunk[1];
@@ -160,7 +160,6 @@ GByteArray* fpi_goodix_protocol_decode_image(const GByteArray *image) {
         buffer[3] = (chunk[4] << 4) + (chunk[5] >> 4);
         g_byte_array_append(decoded_image, buffer, 4);
     }
-    g_free(buffer);
 
     return decoded_image;
 }
@@ -168,4 +167,17 @@ GByteArray* fpi_goodix_protocol_decode_image(const GByteArray *image) {
 void fpi_goodix_protocol_free_message(GoodixMessage *message) {
     g_byte_array_free(message->payload, TRUE);
     g_free(message);
+}
+
+GByteArray *fpi_goodix_protocol_generate_fdt_base(const GByteArray *fdt_data) {
+    GByteArray *new_fdt_base = g_byte_array_new();
+    guint8 buffer[2] = {};
+    for (gint i = 0; i <= fdt_data->len; i += 2) {
+        guint16 fdt_val = fdt_data->data[i] | fdt_data->data[i + 1] << 8;
+        guint16 fdt_base_val = (fdt_val & 0xFFFE) * 0x80 | fdt_val >> 1;
+        buffer[0] = fdt_base_val & 0xFF;
+        buffer[1] = fdt_base_val >> 8;
+        g_byte_array_append(new_fdt_base, buffer, 2);
+    }
+    return new_fdt_base;
 }

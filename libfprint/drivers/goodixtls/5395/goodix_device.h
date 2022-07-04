@@ -46,10 +46,10 @@ typedef struct __attribute__((__packed__)) _GoodixCalibrationParam{
     guint16 dac_h;
     guint16 dac_l;
     guint8 dac_delta;
-    guint8 *fdt_base_down;
-    guint8 *fdt_base_up;
-    guint8 *fdt_base_manual;
-    guint8 *calib_image;
+    GByteArray *fdt_base_down;
+    GByteArray *fdt_base_up;
+    GByteArray *fdt_base_manual;
+    GByteArray *calib_image;
 } GoodixCalibrationParam;
 
 struct _FpiGoodixDeviceClass
@@ -86,3 +86,4 @@ GByteArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gbool
 GByteArray *fpi_goodix_protocol_get_image(FpDevice *dev, GByteArray *request, gint timeout_ms, GError **error);
 gboolean fpi_goodix_device_check_receive_data(guint8 category, guint8 command, GoodixMessage *receive_message, GError **error);
 GoodixCalibrationParam *fpi_goodix_device_get_calibration_params(FpDevice *dev);
+void fpi_goodix_device_update_bases(FpDevice *dev, GByteArray *fdt_base);

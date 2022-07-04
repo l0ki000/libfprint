@@ -479,7 +479,7 @@ void fpi_goodix_device_set_calibration_params(FpDevice* dev, GByteArray* payload
     fp_dbg("sensor broken dac_delta=%02x", params->dac_delta);
 
     //TODO: maybe it needs to allocate fdt_base for all variable
-    guint8 *fdt_base = g_malloc0(FDT_BASE_LEN);
+    GByteArray *fdt_base = g_byte_array_sized_new(FDT_BASE_LEN);
 
     params->fdt_base_down = fdt_base;
     params->fdt_base_up = fdt_base;
@@ -652,4 +652,13 @@ GoodixCalibrationParam *fpi_goodix_device_get_calibration_params(FpDevice *dev) 
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
     return priv->calibration_params;
+}
+
+void fpi_goodix_device_update_bases(FpDevice *dev, GByteArray *fdt_base) {
+    g_assert(fdt_base->len == FDT_BASE_LEN);
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    priv->calibration_params->fdt_base_down = fdt_base;
+    priv->calibration_params->fdt_base_up = fdt_base;
+    priv->calibration_params->fdt_base_manual = fdt_base;
 }
