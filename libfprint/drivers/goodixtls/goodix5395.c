@@ -321,6 +321,8 @@ static void fpi_goodix5395_validate_base_img(GByteArray *base_image_1, GByteArra
 }
 
 static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
+
+    FpImageDeviceClass *image_device_class = FP_IMAGE_DEVICE_CLASS(dev);
     //upload config
     fpi_goodix5395_upload_config(dev, ssm);   
     fp_dbg("Config is uploaded.");
@@ -350,7 +352,8 @@ static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     params->calib_image = image_tx_enable;
     fp_dbg("FDT manual base: %s", fpi_goodix_protocol_data_to_str(params->fdt_base_manual, params->fdt_base_manual->len));
     fp_dbg("Decoding and saving calibration image");
-    //TODO: maybe need save image to check?
+    //TODO: it shoold get width and heightfrom fpi image device class
+    fpi_goodix_protocol_write_pgm(params->calib_image, 88, 108, "test.pgm");  
 }
 
 static void fpi_goodix5395_set_sleep_mode(FpDevice* dev, FpiSsm* ssm) {

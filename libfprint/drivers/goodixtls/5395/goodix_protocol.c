@@ -181,3 +181,22 @@ GByteArray *fpi_goodix_protocol_generate_fdt_base(const GByteArray *fdt_data) {
     }
     return new_fdt_base;
 }
+
+
+void fpi_goodix_protocol_write_pgm(const GByteArray *image, const guint width, const guint height, const char *path) {
+    fp_dbg("Image %d x %d, length: %d", width, height, image->len);
+    GString *image_to_write = g_string_new("");
+    g_string_append_printf(image_to_write, "P2\n%d %d\n4095\n\n", width, height);
+    for (guint i = 0; i < image->len; i++) {
+        if ((i % (width + 8)) == 0) {
+            g_string_append_c(image_to_write, '\n');
+        }
+        g_string_append_printf(image_to_write, "%d ", image->data[i]);
+
+    }
+    FILE *fp;
+    fp = fopen(path, "w");
+    fwrite(image_to_write->str, sizeof(gchar), image_to_write->len, fp);
+    fclose(fp);
+
+}
