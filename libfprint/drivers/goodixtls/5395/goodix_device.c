@@ -43,6 +43,9 @@
 #define DELTA_DOWN_TAG 0x82
 #define FDT_BASE_LEN 24
 
+#define SENSOR_WIDTH 108
+#define SENSOR_HEIGHT 88
+
 typedef struct {
     pthread_t tls_server_thread;
     gint tls_server_sock;
@@ -486,12 +489,10 @@ void fpi_goodix_device_set_calibration_params(FpDevice* dev, GByteArray* payload
     params->dac_delta = 0xC83 / tcode;
     fp_dbg("sensor broken dac_delta=%02x", params->dac_delta);
 
-    //TODO: maybe it needs to allocate fdt_base for all variable
-    guint8 *fdt_base = g_malloc0(FDT_BASE_LEN);
-
-    params->fdt_base_down = fdt_base;
-    params->fdt_base_up = fdt_base;
-    params->fdt_base_manual = fdt_base;
+    //TODO: maybe it doesn't need to allocate  different chunks for all variables
+    params->fdt_base_down = g_malloc0(FDT_BASE_LEN);
+    params->fdt_base_up = g_malloc0(FDT_BASE_LEN);
+    params->fdt_base_manual = g_malloc0(FDT_BASE_LEN);
 
     priv->calibration_params = params;
 }
@@ -655,4 +656,87 @@ GByteArray *fpi_goodix_protocol_get_image(FpDevice *dev, GByteArray *request, gi
 //  TODO       if self.gtls_context is None or not self.gtls_context.is_connected():
 //             raise Exception("Invalid GTLS connection state")
     return fpi_goodix_gtls_decrypt_sensor_data(priv->gtls_params, message->payload, error);
+}
+
+gboolean fpi_goodix_device_is_fdt_base_valid(FpDevice *dev, GByteArray *fdt_data_1, GByteArray *fdt_data_2){
+    g_assert(fdt_data_1->len == fdt_data_2->len);
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    guint16 fdt_val_1, fdt_val_2;
+    gint16 delta;
+    fp_dbg("Checking FDT data, max delta: %f", priv->calibration_params->delta_fdt);
+    for (int i = 0; i < fdt_data_1->len; i = i + 2) {
+        fdt_val_1 = fdt_data_1->data[i] | fdt_data_1->data[i + 1] << 8;
+        fdt_val_2 = fdt_data_2->data[i] | fdt_data_2->data[i + 1] << 8;
+
+        delta = abs((fdt_val_2 >> 1) - (fdt_val_1 >> 1));
+        if (delta > priv->calibration_params->delta_fdt) return FALSE;
+    }
+    return TRUE;
+}
+
+gboolean fpi_goodix_device_validate_base_img(FpDevice *dev, GByteArray *base_image_1, GByteArray *base_image_2) {
+    g_assert(base_image_1->len == SENSOR_WIDTH * SENSOR_HEIGHT);
+    g_assert(base_image_2->len == SENSOR_WIDTH * SENSOR_HEIGHT);
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    guint8 image_val_1, image_val_2;
+    gint offset, diff_sum = 0;
+    const guint8 image_threshold = priv->calibration_params->delta_img;
+    for (gint row_idx = 2; row_idx < SENSOR_HEIGHT - 2; row_idx += 2) {
+        for (gint col_idx = 2; col_idx < SENSOR_HEIGHT - 2; col_idx += 2) {
+            offset = row_idx * SENSOR_WIDTH + col_idx;
+            image_val_1 = base_image_1->data[offset];
+            image_val_2 = base_image_2->data[offset];
+            diff_sum += abs(image_val_2 - image_val_1);
+        }
+    }
+    gdouble avg = diff_sum / ((SENSOR_HEIGHT - 4) * (SENSOR_WIDTH - 4));
+    fp_dbg("Checking image data, avg: %.2f, threshold: %d", avg, image_threshold);
+    if (avg > image_threshold){
+        return FALSE;
+    }
+    return TRUE;
+}
+
+GByteArray *fpi_device_generate_fdt_base(GByteArray *fdt_data){
+    GByteArray *fdt_base = g_byte_array_new();
+    guint16 fdt_val, fdt_base_val;
+    for (int idx = 0; idx <= fdt_data->len; idx += 2) {
+        fdt_val = fdt_data->data[idx] | fdt_data->data[idx + 1] << 8;
+        fdt_base_val = (fdt_val & 0xFFFE) * 0x80 | fdt_val >> 1;
+        g_byte_array_append(fdt_base, &fdt_base_val, 2);
+    }
+    return fdt_base;
+}
+
+void fpi_device_update_fdt_bases(FpDevice *dev, GByteArray *fdt_base){
+    g_assert(fdt_base->len == FDT_BASE_LEN);
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    if(priv->calibration_params->fdt_base_down != NULL) {
+        g_free(priv->calibration_params->fdt_base_down);
+    }
+    if(priv->calibration_params->fdt_base_manual != NULL) {
+        g_free(priv->calibration_params->fdt_base_manual);
+    }
+    if(priv->calibration_params->fdt_base_up != NULL) {
+        g_free(priv->calibration_params->fdt_base_up);
+    }
+    priv->calibration_params->fdt_base_down = g_malloc0(FDT_BASE_LEN);
+    priv->calibration_params->fdt_base_manual = g_malloc0(FDT_BASE_LEN);
+    priv->calibration_params->fdt_base_up = g_malloc0(FDT_BASE_LEN);
+    memcpy(priv->calibration_params->fdt_base_down, fdt_base->data, FDT_BASE_LEN);
+    memcpy(priv->calibration_params->fdt_base_manual, fdt_base->data, FDT_BASE_LEN);
+    memcpy(priv->calibration_params->fdt_base_up, fdt_base->data, FDT_BASE_LEN);
+    fp_dbg("FDT manual base: %s", fpi_goodix_protocol_data_to_str(priv->calibration_params->fdt_base_manual, FDT_BASE_LEN));
+}
+
+void fpi_device_update_calibration_image(FpDevice *dev, GByteArray *calib_image) {
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    if(priv->calibration_params->calib_image != NULL) {
+        g_byte_array_free(priv->calibration_params->calib_image, TRUE);
+    }
+    priv->calibration_params->calib_image = calib_image;
 }

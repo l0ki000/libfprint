@@ -295,7 +295,35 @@ static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     fp_dbg("Config is uploaded.");
     GError *error = NULL;
     GByteArray *fdt_data_tx_enabled = fpi_goodix_device_get_fdt_base_with_tx(dev, TRUE, &error);
-    GByteArray *image_tx_enable = fpi_goodix_device_get_image(dev, TRUE, TRUE, 'l', FALSE, FALSE, &error);
+    GByteArray *image_tx_enabled = fpi_goodix_device_get_image(dev, TRUE, TRUE, 'l', FALSE, FALSE, &error);
+
+    GByteArray *fdt_data_tx_disabled = fpi_goodix_device_get_fdt_base_with_tx(dev, FALSE, &error);
+
+    gboolean fdt_base_valid = fpi_goodix_device_is_fdt_base_valid(dev, fdt_data_tx_enabled, fdt_data_tx_disabled);
+
+    if(!fdt_base_valid){
+        FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(UPDATE_ALL_BASE, "Invalid FDT", NULL));
+    }
+    GByteArray *image_tx_disabled = fpi_goodix_device_get_image(dev, FALSE, TRUE, 'l', FALSE, FALSE, &error);
+    if (!fpi_goodix_device_validate_base_img(dev, image_tx_enabled, image_tx_disabled)) {
+        FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(UPDATE_ALL_BASE, "Invalid base image", NULL));
+    }else{
+        fp_dbg("Valid base image");
+    }
+    GByteArray *fdt_data_tx_enabled_2 = fpi_goodix_device_get_fdt_base_with_tx(dev, TRUE, &error);
+
+    fdt_base_valid = fpi_goodix_device_is_fdt_base_valid(dev, fdt_data_tx_enabled_2, fdt_data_tx_disabled);
+    if(!fdt_base_valid){
+        FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(UPDATE_ALL_BASE, "Invalid FDT", NULL));
+    }
+
+    fpi_device_update_fdt_bases(dev, fpi_device_generate_fdt_base(fdt_data_tx_enabled));
+    fpi_device_update_calibration_image(dev, image_tx_enabled);
+
+    // TODO
+    // fp_dbg("Decoding and saving calibration image");
+    // tool.write_pgm(calib_params.calib_image, SENSOR_HEIGHT, SENSOR_WIDTH,
+    //                "clear.pgm")
 }
 
 static void fpi_goodix5395_activate_run_state(FpiSsm *ssm, FpDevice *dev) {
@@ -313,6 +341,7 @@ static void fpi_goodix5395_activate_run_state(FpiSsm *ssm, FpDevice *dev) {
           break;
 
       case CHECK_SENSOR:
+          fp_info("Checking PSK hash");
           fpi_device_goodixtls5395_check_sensor(dev, ssm);
           break;
 
@@ -330,7 +359,7 @@ static void fpi_goodix5395_activate_run_state(FpiSsm *ssm, FpDevice *dev) {
           fpi_goodix5395_update_all_base(dev, ssm);
           break;
       case SET_SLEEP_MODE:
-          fp_dbg("Set sleep mode.");
+          fp_info("Set sleep mode.");
           break;
   }
 }

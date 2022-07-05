@@ -49,7 +49,7 @@ typedef struct __attribute__((__packed__)) _GoodixCalibrationParam{
     guint8 *fdt_base_down;
     guint8 *fdt_base_up;
     guint8 *fdt_base_manual;
-    guint8 *calib_image;
+    GByteArray *calib_image;
 } GoodixCalibrationParam;
 
 struct _FpiGoodixDeviceClass
@@ -84,3 +84,7 @@ GByteArray *fpi_goodix_device_execute_fdt_operation(FpDevice *dev, enum FingerDe
 GByteArray *fpi_goodix_device_get_finger_detection_data(FpDevice *dev, enum FingerDetectionOperation fdt_op, GError **error);
 GByteArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gboolean hv_enable, gchar use_dac, gboolean adjust_dac, gboolean is_finger, GError **error);
 GByteArray *fpi_goodix_protocol_get_image(FpDevice *dev, GByteArray *request, gint timeout_ms, GError **error);
+gboolean fpi_goodix_device_validate_base_img(FpDevice *dev, GByteArray *base_image_1, GByteArray *base_image_2);
+void fpi_device_update_fdt_bases(FpDevice *dev, GByteArray *fdt_base);
+GByteArray *fpi_device_generate_fdt_base(GByteArray *fdt_data);
+void fpi_device_update_calibration_image(FpDevice *dev, GByteArray *calib_image);
