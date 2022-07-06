@@ -91,5 +91,6 @@ GoodixCalibrationParam *fpi_goodix_device_get_calibration_params(FpDevice *dev);
 void fpi_goodix_device_update_bases(FpDevice *dev, GByteArray *fdt_base);
 gboolean fpi_goodix_device_validate_base_img(FpDevice *dev, GByteArray *base_image_1, GByteArray *base_image_2);
 void fpi_device_update_fdt_bases(FpDevice *dev, GByteArray *fdt_base);
+gboolean fpi_goodix_device_is_fdt_base_valid(FpDevice *dev, GByteArray *fdt_data_1, GByteArray *fdt_data_2);
 GByteArray *fpi_device_generate_fdt_base(GByteArray *fdt_data);
 void fpi_device_update_calibration_image(FpDevice *dev, GByteArray *calib_image);

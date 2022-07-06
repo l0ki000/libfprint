@@ -663,7 +663,7 @@ void fpi_goodix_device_update_bases(FpDevice *dev, GByteArray *fdt_base) {
     priv->calibration_params->fdt_base_manual = fdt_base;
 }
 
-gboolean fpi_goodix_device_is_fdt_base_valid(FpDevice *dev, GByteArray *fdt_data_1, GByteArray *fdt_data_2){
+gboolean fpi_goodix_device_is_fdt_base_valid(FpDevice *dev, GByteArray *fdt_data_1, GByteArray *fdt_data_2) {
     g_assert(fdt_data_1->len == fdt_data_2->len);
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);

@@ -22,9 +22,9 @@
 #include <string.h>
 #include <drivers_api.h>
 
-#include "5395/goodix_device.h"
+#include "goodix_device.h"
 #include "goodix5395.h"
-#include "5395/crypto_utils.h"
+#include "crypto_utils.h"
 
 #define FIRMWARE_VERSION_1 "GF5288_HTSEC_APP_10011"
 #define FIRMWARE_VERSION_2 "GF5288_HTSEC_APP_10020"
@@ -321,8 +321,6 @@ static void fpi_goodix5395_validate_base_img(GByteArray *base_image_1, GByteArra
 }
 
 static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
-
-    FpImageDeviceClass *image_device_class = FP_IMAGE_DEVICE_CLASS(dev);
     //upload config
     fpi_goodix5395_upload_config(dev, ssm);   
     fp_dbg("Config is uploaded.");
@@ -373,7 +371,7 @@ static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     GByteArray *image_tx_disabled = fpi_goodix_device_get_image(dev, FALSE, TRUE, 'l', FALSE, FALSE, &error);
     if (!fpi_goodix_device_validate_base_img(dev, image_tx_enabled, image_tx_disabled)) {
         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(UPDATE_ALL_BASE, "Invalid base image", NULL));
-    }else{
+    } else {
         fp_dbg("Valid base image");
     }
     GByteArray *fdt_data_tx_enabled_2 = fpi_goodix_device_get_fdt_base_with_tx(dev, TRUE, &error);
