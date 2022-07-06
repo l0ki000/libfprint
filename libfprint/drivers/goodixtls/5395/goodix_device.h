@@ -46,9 +46,9 @@ typedef struct __attribute__((__packed__)) _GoodixCalibrationParam{
     guint8 dac_h;
     guint8 dac_l;
     guint8 dac_delta;
-    guint8 *fdt_base_down;
-    guint8 *fdt_base_up;
-    guint8 *fdt_base_manual;
+    GByteArray *fdt_base_down;
+    GByteArray *fdt_base_up;
+    GByteArray *fdt_base_manual;
     GByteArray *calib_image;
 } GoodixCalibrationParam;
 
@@ -80,7 +80,7 @@ void fpi_goodix_device_prepare_config(FpDevice *dev, GByteArray *config);
 void fpi_goodix_device_set_calibration_params(FpDevice *dev, GByteArray* otp);
 gboolean fpi_goodix_device_set_sleep_mode(FpDevice *dev, GError **error);
 GByteArray *fpi_goodix_device_get_fdt_base_with_tx(FpDevice *dev, gboolean tx_enable, GError **error);
-GByteArray *fpi_goodix_device_execute_fdt_operation(FpDevice *dev, enum FingerDetectionOperation fdt_op, gboolean tx_enable, GByteArray *fdt_base, gint timeout_ms, GError **error);
+GByteArray *fpi_goodix_device_execute_fdt_operation(FpDevice *dev, enum FingerDetectionOperation fdt_op, GByteArray *fdt_base, gint timeout_ms, GError **error);
 GByteArray *fpi_goodix_device_get_finger_detection_data(FpDevice *dev, enum FingerDetectionOperation fdt_op, GError **error);
 GByteArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gboolean hv_enable, gchar use_dac, gboolean adjust_dac, gboolean is_finger, GError **error);
 GByteArray *fpi_goodix_protocol_get_image(FpDevice *dev, GByteArray *request, gint timeout_ms, GError **error);
@@ -88,3 +88,5 @@ gboolean fpi_goodix_device_validate_base_img(FpDevice *dev, GByteArray *base_ima
 void fpi_device_update_fdt_bases(FpDevice *dev, GByteArray *fdt_base);
 GByteArray *fpi_device_generate_fdt_base(GByteArray *fdt_data);
 void fpi_device_update_calibration_image(FpDevice *dev, GByteArray *calib_image);
+gboolean fpi_goodix_device_ec_control(FpDevice *dev, gboolean is_enable, gint timeout_ms, GError **error);
+void fpi_goodix_device_setup_finger_position_detection(FpDevice *dev, enum FingerDetectionOperation posix, gint timeout_ms, GError **error);

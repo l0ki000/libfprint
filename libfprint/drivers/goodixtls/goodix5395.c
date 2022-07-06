@@ -63,7 +63,7 @@ G_DECLARE_FINAL_TYPE(FpiDeviceGoodixTls5395, fpi_device_goodixtls5395, FPI, DEVI
 
 G_DEFINE_TYPE(FpiDeviceGoodixTls5395, fpi_device_goodixtls5395, FPI_TYPE_GOODIX_DEVICE)
 
-// ---- ACTIVE SECTION START ----
+// ---- INIT SECTION START ----
 
 enum Goodix5395InitState {
   INIT_DEVICE,
@@ -81,7 +81,7 @@ enum Goodix5395InitState {
 static void fpi_goodix5395_activate_complete(FpiSsm *ssm, FpDevice *dev, GError *error) {
     FpImageDevice *image_dev = FP_IMAGE_DEVICE(dev);
 
-    fpi_image_device_activate_complete(image_dev, error);
+    //fpi_image_device_activate_complete(image_dev, error);
 
     if (!error) {
 //        fpi_ssm_start(fpi_ssm_new(dev, goodix_tls_run_state, TLS_NUM_STATES), goodix_tls_complete);
@@ -336,7 +336,7 @@ static void fpi_goodix5395_set_sleep_mode(FpDevice *dev, FpiSsm *ssm){
     fpi_ssm_next_state(ssm);
 }
 
-static void fpi_goodix5395_activate_run_state(FpiSsm *ssm, FpDevice *dev) {
+static void fpi_goodix5395_run_init_state(FpiSsm *ssm, FpDevice *dev) {
   switch (fpi_ssm_get_cur_state(ssm)) {
       case INIT_DEVICE:
           fpi_device_goodixtls5395_ping(dev, ssm);
@@ -375,25 +375,70 @@ static void fpi_goodix5395_activate_run_state(FpiSsm *ssm, FpDevice *dev) {
   }
 }
 
+// ---- INIT SECTION END ----
+
+// -----------------------------------------------------------------------------
+
+// ---- ACTIVE SECTION START ----
+enum Goodix5395ActivateState {
+    POWER_ON,
+    FINGER_DOWN_DETECTION,
+    WAITING_FINGER,
+    READING_IMAGE,
+    FINGER_UP_DETECTION,
+    AC_SET_SLEEP_MODE,
+    POWER_OFF,
+    DEVICE_ACTIVATE_END,
+};
+static void fpi_goodix5395_ec_control(FpDevice *dev, FpiSsm *ssm, gboolean on, gint timeout_ms){
+    GError *error = NULL;
+    fpi_goodix_device_ec_control(dev, TRUE, 200, error);
+    if (error){
+        FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(fpi_ssm_get_cur_state(ssm), "Error ec control", NULL));
+    }
+    fpi_ssm_next_state(ssm);
+}
+
+static void fpi_goodix_device5395_finger_position_detection(FpDevice *dev, FpiSsm *ssm, enum FingerDetectionOperation posix, gint timeout_ms){
+    GError *error = NULL;
+    fpi_goodix_device_setup_finger_position_detection(dev, posix, timeout_ms, &error);
+    if(error) {
+        FAIL_SSM_AND_RETURN(ssm, error);
+    }
+    fpi_ssm_next_state(ssm);
+}
+
+static void fpi_goodix5395_run_activate_state(FpiSsm *ssm, FpDevice *dev){
+    fp_info("Activating device...");
+    switch (fpi_ssm_get_cur_state(ssm)){
+    case POWER_ON:
+        fp_info("Powering on sensor");
+        fpi_goodix5395_ec_control(dev, ssm, TRUE, 200);
+        break;
+    case FINGER_DOWN_DETECTION:
+        fp_info("Setting up finger down detection");
+        fpi_goodix_device5395_finger_position_detection(dev, ssm, DOWN, 500);
+    }
+}
 // ---- ACTIVE SECTION END ----
 
 // -----------------------------------------------------------------------------
 
 // ---- DEV SECTION START ----
 
-static void fpi_device_goodixtls5395_init_device(FpImageDevice *img_dev) {
+static void fpi_device_goodixtls5395_img_open(FpImageDevice *img_dev) {
   FpDevice *dev = FP_DEVICE(img_dev);
   GError *error = NULL;
 
   if (fpi_goodix_device_init_device(dev, &error)) {
+    fpi_ssm_start(fpi_ssm_new(dev, fpi_goodix5395_run_init_state, DEVICE_INIT_NUM_STATES), NULL);
     fpi_image_device_open_complete(img_dev, error);
     return;
   }
-
   fpi_image_device_open_complete(img_dev, NULL);
 }
 
-static void fpi_device_goodixtls5395_deinit_device(FpImageDevice *img_dev) {
+static void fpi_device_goodixtls5395_img_close(FpImageDevice *img_dev) {
   FpDevice *dev = FP_DEVICE(img_dev);
   GError *error = NULL;
 
@@ -405,16 +450,14 @@ static void fpi_device_goodixtls5395_deinit_device(FpImageDevice *img_dev) {
   fpi_image_device_close_complete(img_dev, NULL);
 }
 
-static void fpi_device_goodixtls5395_activate_device(FpImageDevice *img_dev) {
-  FpDevice *dev = FP_DEVICE(img_dev);
-
-  fpi_ssm_start(fpi_ssm_new(dev, fpi_goodix5395_activate_run_state, DEVICE_INIT_NUM_STATES),
-                fpi_goodix5395_activate_complete);
+static void fpi_device_goodixtls5395_activate(FpImageDevice *img_dev) {
+    FpDevice *dev = FP_DEVICE(img_dev);
+    fpi_ssm_start(fpi_ssm_new(dev, fpi_goodix5395_run_activate_state, DEVICE_ACTIVATE_END), NULL);
 }
 
 static void fpi_device_goodixtls5395_change_state(FpImageDevice *img_dev, FpiImageDeviceState state) {}
 
-static void fpi_device_goodixtls5395_deactivate_device(FpImageDevice *img_dev) {
+static void fpi_device_goodixtls5395_deactivate(FpImageDevice *img_dev) {
   fpi_image_device_deactivate_complete(img_dev, NULL);
 }
 
@@ -444,11 +487,11 @@ static void fpi_device_goodixtls5395_class_init(FpiDeviceGoodixTls5395Class *cla
     image_device_class->img_width = 88;
     image_device_class->img_height = 108;
 
-    image_device_class->img_open = fpi_device_goodixtls5395_init_device;
-    image_device_class->img_close = fpi_device_goodixtls5395_deinit_device;
-    image_device_class->activate = fpi_device_goodixtls5395_activate_device;
+    image_device_class->img_open = fpi_device_goodixtls5395_img_open;
+    image_device_class->img_close = fpi_device_goodixtls5395_img_close;
+    image_device_class->activate = fpi_device_goodixtls5395_activate;
     image_device_class->change_state = fpi_device_goodixtls5395_change_state;
-    image_device_class->deactivate = fpi_device_goodixtls5395_deactivate_device;
+    image_device_class->deactivate = fpi_device_goodixtls5395_deactivate;
 
     fpi_device_class_auto_initialize_features(device_class);
     device_class->features &= ~FP_DEVICE_FEATURE_VERIFY;

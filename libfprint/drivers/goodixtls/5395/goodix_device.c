@@ -77,15 +77,16 @@ static void fpi_goodix_device_class_init(FpiGoodixDeviceClass *class) { }
 
 // ----- METHODS -----
 
-static gboolean fpi_goodix_device_check_receive_data(GoodixMessage *send_message, GoodixMessage *receive_message, GError **error) {
-    gboolean is_success_reply = send_message->category == receive_message->category 
-                                    && send_message->command == receive_message->command;
+// TODO: We a message is sent it's automatically freed, so for now it isn't possible use this function 
+//static gboolean fpi_goodix_device_check_receive_data(GoodixMessage *send_message, GoodixMessage *receive_message, GError **error) {
+//     gboolean is_success_reply = send_message->category == receive_message->category 
+//                                     && send_message->command == receive_message->command;
 
-    if (!is_success_reply) {
-        *error = FPI_GOODIX_DEVICE_ERROR(1, "Category and command are different for send and receive message. \n Send message category %02x, command %02x. \n Receive message category %02x, command %02x", send_message->category, send_message->command, receive_message->category, receive_message->command);
-    }
-    return is_success_reply; 
-}
+//     if (!is_success_reply) {
+//         *error = FPI_GOODIX_DEVICE_ERROR(1, "Category and command are different for send and receive message. \n Send message category %02x, command %02x. \n Receive message category %02x, command %02x", send_message->category, send_message->command, receive_message->category, receive_message->command);
+//     }
+//     return is_success_reply; 
+// }
 
 static gboolean fpi_goodix_device_receive_chunk(FpDevice *dev, GByteArray *data, GError **error) {
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
@@ -489,10 +490,17 @@ void fpi_goodix_device_set_calibration_params(FpDevice* dev, GByteArray* payload
     params->dac_delta = 0xC83 / tcode;
     fp_dbg("sensor broken dac_delta=%02x", params->dac_delta);
 
-    //TODO: maybe it doesn't need to allocate  different chunks for all variables
-    params->fdt_base_down = g_malloc0(FDT_BASE_LEN);
-    params->fdt_base_up = g_malloc0(FDT_BASE_LEN);
-    params->fdt_base_manual = g_malloc0(FDT_BASE_LEN);
+    //TODO: maybe it doesn't need to allocate different GByteArray for all variables
+    guint8 t[FDT_BASE_LEN] = {0};
+    params->fdt_base_down = g_byte_array_new();
+    g_byte_array_append(params->fdt_base_down, t, FDT_BASE_LEN);
+
+    params->fdt_base_up = g_byte_array_new();
+    g_byte_array_append(params->fdt_base_up, t, FDT_BASE_LEN);
+
+    params->fdt_base_manual = g_byte_array_new();
+    g_byte_array_append(params->fdt_base_manual, t, FDT_BASE_LEN);
+
 
     priv->calibration_params = params;
 }
@@ -503,12 +511,12 @@ gboolean fpi_goodix_device_set_sleep_mode(FpDevice *dev, GError **error) {
     return fpi_goodix_device_send(dev, message, TRUE, 200, FALSE, error);
 }
 
-gboolean fpi_goodix_device_ec_control(FpDevice *dev, gboolean is_enable, GError **error) {
+gboolean fpi_goodix_device_ec_control(FpDevice *dev, gboolean is_enable, gint timeout_ms, GError **error) {
     guint8 control_val = is_enable ? 1 : 0;
     guint8 payload[] = {control_val, control_val, 0x00};
 
     GoodixMessage *message = fpi_goodix_protocol_create_message(0xA, 7, payload, sizeof(payload));
-    if(!fpi_goodix_device_send(dev, message, TRUE, GOODIX_TIMEOUT, FALSE, error)) {
+    if(!fpi_goodix_device_send(dev, message, TRUE, timeout_ms, FALSE, error)) {
         return FALSE;
     }
 
@@ -517,9 +525,10 @@ gboolean fpi_goodix_device_ec_control(FpDevice *dev, gboolean is_enable, GError 
         return FALSE;
     }
 
-    if (!fpi_goodix_device_check_receive_data(message, receive_message, error)) {
-        return FALSE;
-    }
+    // TODO See comment above fpi_goodix_device_check_receive_data
+    //if (!fpi_goodix_device_check_receive_data(message, receive_message, error)) {
+    //     return FALSE;
+    // }
 
     gboolean is_ec_control_success = receive_message->payload->data[0] != 1;
 
@@ -536,30 +545,35 @@ GByteArray *fpi_goodix_device_get_fdt_base_with_tx(FpDevice *dev, gboolean tx_en
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
 
     GByteArray *payload = g_byte_array_new();
-    g_byte_array_append(payload, priv->calibration_params->fdt_base_manual, FDT_BASE_LEN);
-
-    GByteArray *fdt_base = fpi_goodix_device_execute_fdt_operation(dev, MANUAL, tx_enable, payload, 500, error);
+    guint8 op_code = 0xD;
+    if(!tx_enable){
+        op_code |= 0x80;
+    }
+    g_byte_array_append(payload, &op_code, 1);
+    g_byte_array_append(payload, priv->calibration_params->fdt_base_manual->data, priv->calibration_params->fdt_base_manual->len);
+    GByteArray *fdt_base = fpi_goodix_device_execute_fdt_operation(dev, MANUAL, payload, 500, error);
     if(fdt_base->len == 0) {
         //TODO error
     }
     return fdt_base;
 }
 
-GByteArray *fpi_goodix_device_execute_fdt_operation(FpDevice *dev, enum FingerDetectionOperation fdt_op, gboolean tx_enable, GByteArray *fdt_base, gint timeout_ms, GError **error){
+GByteArray *fpi_goodix_device_execute_fdt_operation(FpDevice *dev, enum FingerDetectionOperation fdt_op, GByteArray *fdt_base, gint timeout_ms, GError **error){
     guint8 op_code = 0xD;
-        g_assert(fdt_base->len == 24);
     switch (fdt_op) {
         case DOWN:
+            g_assert(fdt_base->len == 24);
             op_code = 0xC;
             break;
         case UP:
+            g_assert(fdt_base->len == 24);
             op_code = 0xE;
             break;
         case MANUAL:
-            op_code = 0xD;
-            if (!tx_enable) {
-                op_code = op_code | (guint8)0x80;
-            }
+            g_assert(fdt_base->len == 25);
+            op_code = fdt_base->data[0];
+            g_byte_array_remove_index(fdt_base, 0);
+            timeout_ms = 500;
             break;
     }
     GByteArray *payload = g_byte_array_new();
@@ -715,21 +729,18 @@ void fpi_device_update_fdt_bases(FpDevice *dev, GByteArray *fdt_base){
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
     if(priv->calibration_params->fdt_base_down != NULL) {
-        g_free(priv->calibration_params->fdt_base_down);
+        g_byte_array_free(priv->calibration_params->fdt_base_down, TRUE);
     }
     if(priv->calibration_params->fdt_base_manual != NULL) {
-        g_free(priv->calibration_params->fdt_base_manual);
+        g_byte_array_free(priv->calibration_params->fdt_base_manual, TRUE);
     }
     if(priv->calibration_params->fdt_base_up != NULL) {
-        g_free(priv->calibration_params->fdt_base_up);
+        g_byte_array_free(priv->calibration_params->fdt_base_up, TRUE);
     }
-    priv->calibration_params->fdt_base_down = g_malloc0(FDT_BASE_LEN);
-    priv->calibration_params->fdt_base_manual = g_malloc0(FDT_BASE_LEN);
-    priv->calibration_params->fdt_base_up = g_malloc0(FDT_BASE_LEN);
-    memcpy(priv->calibration_params->fdt_base_down, fdt_base->data, FDT_BASE_LEN);
-    memcpy(priv->calibration_params->fdt_base_manual, fdt_base->data, FDT_BASE_LEN);
-    memcpy(priv->calibration_params->fdt_base_up, fdt_base->data, FDT_BASE_LEN);
-    fp_dbg("FDT manual base: %s", fpi_goodix_protocol_data_to_str(priv->calibration_params->fdt_base_manual, FDT_BASE_LEN));
+    priv->calibration_params->fdt_base_down = g_byte_array_new_take(fdt_base->data, fdt_base->len);
+    priv->calibration_params->fdt_base_manual = g_byte_array_new_take(fdt_base->data, fdt_base->len);
+    priv->calibration_params->fdt_base_up = g_byte_array_new_take(fdt_base->data, fdt_base->len);
+    fp_dbg("FDT manual base: %s", fpi_goodix_protocol_data_to_str(priv->calibration_params->fdt_base_manual->data, priv->calibration_params->fdt_base_manual->len));
 }
 
 void fpi_device_update_calibration_image(FpDevice *dev, GByteArray *calib_image) {
@@ -739,4 +750,10 @@ void fpi_device_update_calibration_image(FpDevice *dev, GByteArray *calib_image)
         g_byte_array_free(priv->calibration_params->calib_image, TRUE);
     }
     priv->calibration_params->calib_image = calib_image;
+}
+
+void fpi_goodix_device_setup_finger_position_detection(FpDevice *dev, enum FingerDetectionOperation posix, gint timeout_ms, GError **error){
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    fpi_goodix_device_execute_fdt_operation(dev, posix, priv->calibration_params->fdt_base_down, timeout_ms, error);
 }
