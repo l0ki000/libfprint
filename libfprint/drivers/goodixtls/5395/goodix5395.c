@@ -25,6 +25,7 @@
 #include "goodix_device.h"
 #include "goodix5395.h"
 #include "crypto_utils.h"
+#include "goodix5395_capture.h"
 
 #define FIRMWARE_VERSION_1 "GF5288_HTSEC_APP_10011"
 #define FIRMWARE_VERSION_2 "GF5288_HTSEC_APP_10020"
@@ -84,7 +85,7 @@ static void fpi_goodix5395_activate_complete(FpiSsm *ssm, FpDevice *dev, GError 
     fpi_image_device_activate_complete(image_dev, error);
 
     if (!error) {
-//        fpi_ssm_start(fpi_ssm_new(dev, goodix_tls_run_state, TLS_NUM_STATES), goodix_tls_complete);
+       run_capture_state(ssm, dev);
     }
 }
 
