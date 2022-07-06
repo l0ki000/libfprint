@@ -42,7 +42,7 @@ static void goodix5395_capture_run_state(FpiSsm *ssm, FpDevice *dev) {
 
 }
 
-void run_capture_state(FpiSsm *ssm, FpDevice *dev) {
+void run_capture_state(FpDevice *dev) {
 	fp_dbg("Start capture fingerprint.");
 	fpi_ssm_start(fpi_ssm_new(dev, goodix5395_capture_run_state, CAPTURE_NUM_STATES), goodix5395_capture_complete);
 }

@@ -82,10 +82,8 @@ enum Goodix5395InitState {
 static void fpi_goodix5395_activate_complete(FpiSsm *ssm, FpDevice *dev, GError *error) {
     FpImageDevice *image_dev = FP_IMAGE_DEVICE(dev);
 
-    fpi_image_device_activate_complete(image_dev, error);
-
     if (!error) {
-       run_capture_state(ssm, dev);
+        fpi_image_device_open_complete(image_dev, NULL);  
     }
 }
 
@@ -451,7 +449,8 @@ static void fpi_device_goodixtls5395_init_device(FpImageDevice *img_dev) {
   GError *error = NULL;
 
   if (fpi_goodix_device_init_device(dev, &error)) {
-    fpi_image_device_open_complete(img_dev, error);
+    fpi_ssm_start(fpi_ssm_new(dev, fpi_goodix5395_activate_run_state, DEVICE_INIT_NUM_STATES),
+                fpi_goodix5395_activate_complete);
     return;
   }
 
@@ -473,8 +472,7 @@ static void fpi_device_goodixtls5395_deinit_device(FpImageDevice *img_dev) {
 static void fpi_device_goodixtls5395_activate_device(FpImageDevice *img_dev) {
   FpDevice *dev = FP_DEVICE(img_dev);
 
-  fpi_ssm_start(fpi_ssm_new(dev, fpi_goodix5395_activate_run_state, DEVICE_INIT_NUM_STATES),
-                fpi_goodix5395_activate_complete);
+  run_capture_state(dev);
 }
 
 static void fpi_device_goodixtls5395_change_state(FpImageDevice *img_dev, FpiImageDeviceState state) {}
