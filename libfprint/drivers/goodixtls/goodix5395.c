@@ -353,7 +353,7 @@ static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     fp_dbg("FDT manual base: %s", fpi_goodix_protocol_data_to_str(params->fdt_base_manual, params->fdt_base_manual->len));
     fp_dbg("Decoding and saving calibration image");
     //TODO: it shoold get width and heightfrom fpi image device class
-    fpi_goodix_protocol_write_pgm(params->calib_image, 88, 108, "test.pgm");  
+    fpi_goodix_protocol_write_pgm(params->calib_image, 108, 88, "test.pgm");  
 }
 
 static void fpi_goodix5395_set_sleep_mode(FpDevice* dev, FpiSsm* ssm) {

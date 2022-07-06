@@ -151,14 +151,15 @@ GByteArray* fpi_goodix_protocol_decode_image(const GByteArray *image) {
     fp_dbg("Decode image. length: %d", image->len);
     const gint CHUNK_SIZE = 6;
     GByteArray *decoded_image = g_byte_array_new();
-    guint8 buffer[4] = {};
+    guint16 buffer[4] = {};
     for(gint i = 0; i < image->len; i += CHUNK_SIZE) {
         guint8* chunk = image->data + i;
         buffer[0] = ((chunk[0] & 0xf) << 8) + chunk[1];
         buffer[1] = (chunk[3] << 4) + (chunk[0] >> 4);
         buffer[2] = ((chunk[5] & 0xf) << 8) + chunk[2];
         buffer[3] = (chunk[4] << 4) + (chunk[5] >> 4);
-        g_byte_array_append(decoded_image, buffer, 4);
+        fp_dbg("Buffer size is %d", sizeof(buffer));
+        g_byte_array_append(decoded_image, buffer, sizeof(buffer));
     }
 
     return decoded_image;
