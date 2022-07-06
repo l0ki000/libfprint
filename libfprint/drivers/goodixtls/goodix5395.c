@@ -320,10 +320,20 @@ static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     fpi_device_update_fdt_bases(dev, fpi_device_generate_fdt_base(fdt_data_tx_enabled));
     fpi_device_update_calibration_image(dev, image_tx_enabled);
 
+    fpi_ssm_next_state(ssm);
     // TODO
     // fp_dbg("Decoding and saving calibration image");
     // tool.write_pgm(calib_params.calib_image, SENSOR_HEIGHT, SENSOR_WIDTH,
     //                "clear.pgm")
+}
+
+static void fpi_goodix5395_set_sleep_mode(FpDevice *dev, FpiSsm *ssm){
+    GError *error = NULL;
+    fpi_goodix_device_set_sleep_mode(dev, &error);
+    if (error) {
+        FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(UPDATE_ALL_BASE, "Error set sleep mode", NULL));
+    }
+    fpi_ssm_next_state(ssm);
 }
 
 static void fpi_goodix5395_activate_run_state(FpiSsm *ssm, FpDevice *dev) {
@@ -360,6 +370,7 @@ static void fpi_goodix5395_activate_run_state(FpiSsm *ssm, FpDevice *dev) {
           break;
       case SET_SLEEP_MODE:
           fp_info("Set sleep mode.");
+          fpi_goodix5395_set_sleep_mode(dev, ssm);
           break;
   }
 }
