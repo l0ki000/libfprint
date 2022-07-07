@@ -218,8 +218,7 @@ gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean 
     priv->reply = reply;
 
     fpi_goodix_protocol_encode(message, calc_checksum, TRUE, &data, &data_len);
-    g_byte_array_free(message->payload, TRUE);
-    g_free(message);
+    fpi_goodix_protocol_free_message(message);
 
     gboolean is_success = fpi_goodix_device_write(dev, data, data_len, timeout_ms, error);
 
@@ -229,7 +228,7 @@ gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean 
         if (is_success) {
             is_success = fpi_goodix_protocol_check_ack(ackMessage, error);
         }
-        g_free(ackMessage);
+        fpi_goodix_protocol_free_message(ackMessage);
     }
 
     return is_success;
@@ -514,6 +513,8 @@ gboolean fpi_goodix_device_set_sleep_mode(FpDevice *dev, GError **error) {
 gboolean fpi_goodix_device_ec_control(FpDevice *dev, gboolean is_enable, gint timeout_ms, GError **error) {
     guint8 control_val = is_enable ? 1 : 0;
     guint8 payload[] = {control_val, control_val, 0x00};
+    guint8 category = 0xA;
+    guint8 command = 7;
 
     GoodixMessage *message = fpi_goodix_protocol_create_message(0xA, 7, payload, sizeof(payload));
     if(!fpi_goodix_device_send(dev, message, TRUE, timeout_ms, FALSE, error)) {
@@ -680,7 +681,22 @@ GByteArray *fpi_goodix_protocol_get_image(FpDevice *dev, GByteArray *request, gi
     return fpi_goodix_gtls_decrypt_sensor_data(priv->gtls_params, message->payload, error);
 }
 
-gboolean fpi_goodix_device_is_fdt_base_valid(FpDevice *dev, GByteArray *fdt_data_1, GByteArray *fdt_data_2){
+GoodixCalibrationParam *fpi_goodix_device_get_calibration_params(FpDevice *dev) {
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    return priv->calibration_params;
+}
+
+void fpi_goodix_device_update_bases(FpDevice *dev, GByteArray *fdt_base) {
+    g_assert(fdt_base->len == FDT_BASE_LEN);
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    priv->calibration_params->fdt_base_down = fdt_base;
+    priv->calibration_params->fdt_base_up = fdt_base;
+    priv->calibration_params->fdt_base_manual = fdt_base;
+}
+
+gboolean fpi_goodix_device_is_fdt_base_valid(FpDevice *dev, GByteArray *fdt_data_1, GByteArray *fdt_data_2) {
     g_assert(fdt_data_1->len == fdt_data_2->len);
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);

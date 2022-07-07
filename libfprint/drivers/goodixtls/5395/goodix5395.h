@@ -1,7 +1,6 @@
-// Goodix Tls driver for libfprint
+// Goodix 5395 driver for libfprint
 
-// Copyright (C) 2021 Alexander Meiler <alex.meiler@protonmail.com>
-// Copyright (C) 2021 Matthieu CHARETTE <matthieu.charette@gmail.com>
+// Copyright (C) 2022 Anton Turko <anton.turko@proton.me>
 
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public

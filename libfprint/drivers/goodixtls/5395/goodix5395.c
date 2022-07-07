@@ -22,9 +22,10 @@
 #include <string.h>
 #include <drivers_api.h>
 
-#include "5395/goodix_device.h"
+#include "goodix_device.h"
 #include "goodix5395.h"
-#include "5395/crypto_utils.h"
+#include "crypto_utils.h"
+#include "goodix5395_capture.h"
 
 #define FIRMWARE_VERSION_1 "GF5288_HTSEC_APP_10011"
 #define FIRMWARE_VERSION_2 "GF5288_HTSEC_APP_10020"
@@ -84,7 +85,7 @@ static void fpi_goodix5395_activate_complete(FpiSsm *ssm, FpDevice *dev, GError 
     //fpi_image_device_activate_complete(image_dev, error);
 
     if (!error) {
-//        fpi_ssm_start(fpi_ssm_new(dev, goodix_tls_run_state, TLS_NUM_STATES), goodix_tls_complete);
+        fpi_image_device_open_complete(image_dev, NULL);  
     }
 }
 
@@ -114,7 +115,7 @@ static void fpi_device_goodixtls5395_device_enable(FpDevice *dev, FpiSsm *ssm) {
     if (!fpi_goodix_device_receive_data(dev, &receive_message, 200, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
-
+    fp_dbg("Check!");
     if (receive_message->category == 0x8 && receive_message->command == 0x1) {
         int chip_id = fpi_goodix_protocol_decode_u32(receive_message->payload->data, receive_message->payload->len);
         if (chip_id >> 8 != 0x220C) {
@@ -125,7 +126,7 @@ static void fpi_device_goodixtls5395_device_enable(FpDevice *dev, FpiSsm *ssm) {
     } else {
         fpi_ssm_mark_failed(ssm, FPI_GOODIX_DEVICE_ERROR(DEVICE_ENABLE, "Not a register read message for command %02x", receive_message->command));
     }
-    g_free(receive_message);
+    fpi_goodix_protocol_free_message(receive_message);
 
 }
 
@@ -155,7 +156,7 @@ static void fpi_device_goodixtls5395_check_firmware_version(FpDevice *dev, FpiSs
         fpi_ssm_mark_failed(ssm, error);
     }
 
-    g_free(receive_message);
+    fpi_goodix_protocol_free_message(receive_message);
 }
 
 static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
@@ -174,7 +175,7 @@ static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
     }
 
     if (receive_message->category != 0xA || receive_message->command != 0x3) {
-        g_free(receive_message);
+        fpi_goodix_protocol_free_message(receive_message);
         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_SENSOR, "Not a register read message for command %02x", receive_message->command))
     }
     fp_dbg("OTP: %s", fpi_goodix_protocol_data_to_str(receive_message->payload->data, receive_message->payload->len));
@@ -190,7 +191,7 @@ static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
 
     fpi_ssm_next_state(ssm);
 
-    g_free(receive_message);
+    fpi_goodix_protocol_free_message(receive_message);
 }
 
 static void fpi_device_goodixtls5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
@@ -266,10 +267,6 @@ static void fpi_device_goodixtls5395_write_psk(FpDevice *dev, FpiSsm *ssm) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
 
-    if (receive_message->category != 0xE || receive_message->command != 1) {
-        FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(WRITE_PSK, "Not a production write reply command: 0%02x", receive_message->command))
-    }
-
     if (receive_message->payload->data[0] != 0) {
         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(WRITE_PSK, "Production write MCU failed. Command: 0%02x", receive_message->command))
     } else {
@@ -289,12 +286,80 @@ static void fpi_goodix5395_upload_config(FpDevice* dev, FpiSsm* ssm) {
     }
 }
 
+static gboolean fpi_goodix5395_is_fdt_base_valid(const GByteArray *fdt_base_1, const GByteArray *fdt_base_2, gint max_delta) {
+    if (fdt_base_1->len != fdt_base_2->len) {
+        return FALSE;;
+    }
+    fp_dbg("Checking FDT data, max delta: %d", max_delta);
+    for(gint i = 0; i < fdt_base_1->len; i += 2) {
+        guint16 fdt_val_1 = fdt_base_1->data[i] | fdt_base_1->data[i + 1] << 8;
+        guint16 fdt_val_2 = fdt_base_2->data[i] | fdt_base_2->data[i + 1] << 8;
+        guint16 delta = abs((fdt_val_1 >> 1) - (fdt_val_2 >> 1));
+        if (delta > max_delta) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+static void fpi_goodix5395_validate_base_img(GByteArray *base_image_1, GByteArray *base_image_2, guint8 image_threshold) {
+    // assert len(base_image_1) == SENSOR_WIDTH * SENSOR_HEIGHT
+    // assert len(base_image_2) == SENSOR_WIDTH * SENSOR_HEIGHT
+
+    // diff_sum = 0
+    // for row_idx in range(2, SENSOR_HEIGHT - 2):
+    //     for col_idx in range(2, SENSOR_WIDTH - 2):
+    //         offset = row_idx * SENSOR_WIDTH + col_idx
+    //         image_val_1 = base_image_1[offset]
+    //         image_val_2 = base_image_2[offset]
+    //         diff_sum += abs(image_val_2 - image_val_1)
+
+    // avg = diff_sum / ((SENSOR_HEIGHT - 4) * (SENSOR_WIDTH - 4))
+    // logging.debug(f"Checking image data, avg: {avg:.2f}, threshold: {image_threshold}")
+    // if avg > image_threshold:
+    //     raise Exception("Invalid base image")
+
+}
+
 static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     //upload config
     fpi_goodix5395_upload_config(dev, ssm);   
     fp_dbg("Config is uploaded.");
     GError *error = NULL;
     GByteArray *fdt_data_tx_enabled = fpi_goodix_device_get_fdt_base_with_tx(dev, TRUE, &error);
+
+    // GByteArray *image_tx_enable = fpi_goodix_device_get_image(dev, TRUE, TRUE, 'l', FALSE, FALSE, &error);
+//     GByteArray *fdt_data_tx_disabled = fpi_goodix_device_get_fdt_base_with_tx(dev, FALSE, &error);
+//     GoodixCalibrationParam *params = fpi_goodix_device_get_calibration_params(dev);
+//     gboolean is_fdt_valid = fpi_goodix5395_is_fdt_base_valid(fdt_data_tx_enabled, fdt_data_tx_disabled, params->delta_fdt);
+//     fp_dbg("Check fdt data %d", is_fdt_valid);
+//     if (!is_fdt_valid) {
+//         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(UPDATE_ALL_BASE, "Invalid FDT, is_valid_fdt: %d", is_fdt_valid))
+//     }
+
+//     GByteArray *image_tx_disabled = fpi_goodix_device_get_image(dev, FALSE, FALSE, 'l', FALSE, FALSE, &error);
+//     fpi_goodix5395_validate_base_img(image_tx_enable, image_tx_disabled, params->delta_img);
+//     GByteArray *fdt_data_tx_enabled_2 = fpi_goodix_device_get_fdt_base_with_tx(dev, TRUE, &error);
+//     is_fdt_valid = fpi_goodix5395_is_fdt_base_valid(fdt_data_tx_enabled_2, fdt_data_tx_disabled, params->delta_fdt);
+//     fp_dbg("Check fdt data %d", is_fdt_valid);
+//     if (!is_fdt_valid) {
+//         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(UPDATE_ALL_BASE, "Invalid FDT, is_valid_fdt: %d", is_fdt_valid))
+//     }    
+
+
+//     GByteArray *generated_fdt_base = fpi_goodix_protocol_generate_fdt_base(fdt_data_tx_enabled);
+//     fpi_goodix_device_update_bases(dev, generated_fdt_base);
+//     params->calib_image = image_tx_enable;
+//     fp_dbg("FDT manual base: %s", fpi_goodix_protocol_data_to_str(params->fdt_base_manual, params->fdt_base_manual->len));
+//     fp_dbg("Decoding and saving calibration image");
+//     //TODO: it shoold get width and heightfrom fpi image device class
+//     fpi_goodix_protocol_write_pgm(params->calib_image, 108, 88, "test.pgm");  
+// }
+
+// static void fpi_goodix5395_set_sleep_mode(FpDevice* dev, FpiSsm* ssm) {
+//     GError *error = NULL;
+//     if (!fpi_goodix_device_set_sleep_mode(dev, &error)) {
+//         FAIL_SSM_AND_RETURN(ssm, error)
     GByteArray *image_tx_enabled = fpi_goodix_device_get_image(dev, TRUE, TRUE, 'l', FALSE, FALSE, &error);
 
     GByteArray *fdt_data_tx_disabled = fpi_goodix_device_get_fdt_base_with_tx(dev, FALSE, &error);
@@ -307,7 +372,7 @@ static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     GByteArray *image_tx_disabled = fpi_goodix_device_get_image(dev, FALSE, TRUE, 'l', FALSE, FALSE, &error);
     if (!fpi_goodix_device_validate_base_img(dev, image_tx_enabled, image_tx_disabled)) {
         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(UPDATE_ALL_BASE, "Invalid base image", NULL));
-    }else{
+    } else {
         fp_dbg("Valid base image");
     }
     GByteArray *fdt_data_tx_enabled_2 = fpi_goodix_device_get_fdt_base_with_tx(dev, TRUE, &error);
@@ -450,9 +515,13 @@ static void fpi_device_goodixtls5395_img_close(FpImageDevice *img_dev) {
   fpi_image_device_close_complete(img_dev, NULL);
 }
 
-static void fpi_device_goodixtls5395_activate(FpImageDevice *img_dev) {
-    FpDevice *dev = FP_DEVICE(img_dev);
-    fpi_ssm_start(fpi_ssm_new(dev, fpi_goodix5395_run_activate_state, DEVICE_ACTIVATE_END), NULL);
+// TODO static void fpi_device_goodixtls5395_activate(FpImageDevice *img_dev) {
+//     FpDevice *dev = FP_DEVICE(img_dev);
+//     fpi_ssm_start(fpi_ssm_new(dev, fpi_goodix5395_run_activate_state, DEVICE_ACTIVATE_END), NULL);
+static void fpi_device_goodixtls5395_activate_device(FpImageDevice *img_dev) {
+  FpDevice *dev = FP_DEVICE(img_dev);
+
+  run_capture_state(dev);
 }
 
 static void fpi_device_goodixtls5395_change_state(FpImageDevice *img_dev, FpiImageDeviceState state) {}

@@ -142,7 +142,7 @@ driver_sources = {
     'goodixtls511' :
         [ 'drivers/goodixtls/goodix511.c' ],
     'goodixtls5395' :
-        [ 'drivers/goodixtls/goodix5395.c' ],
+        [ 'drivers/goodixtls/5395/goodix5395.c', 'drivers/goodixtls/5395/goodix5395_capture.c' ],
 }
 
 helper_sources = {
