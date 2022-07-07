@@ -97,3 +97,6 @@ GByteArray *fpi_device_generate_fdt_base(GByteArray *fdt_data);
 void fpi_device_update_calibration_image(FpDevice *dev, GByteArray *calib_image);
 gboolean fpi_goodix_device_ec_control(FpDevice *dev, gboolean is_enable, gint timeout_ms, GError **error);
 void fpi_goodix_device_setup_finger_position_detection(FpDevice *dev, enum FingerDetectionOperation posix, gint timeout_ms, GError **error);
+GoodixFtdEvent *fpi_goodix_device_wait_for_fdt_event(FpDevice *dev, enum FingerDetectionOperation posix, guint timeout_ms, GError **error);
+GByteArray *fpi_goodix_device_generate_fdt_up_base(GoodixFtdEvent *event, guint8 delta_down, guint8 delta_up);
+GByteArray *fpi_goodix_device_wait_for_finger_down(FpDevice *dev, guint timeout_ms, GError **error);

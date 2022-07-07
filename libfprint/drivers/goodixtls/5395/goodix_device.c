@@ -77,7 +77,7 @@ static void fpi_goodix_device_class_init(FpiGoodixDeviceClass *class) { }
 
 // ----- METHODS -----
 
-// TODO: We a message is sent it's automatically freed, so for now it isn't possible use this function 
+// TODO: When a message is sent it's automatically freed, so for now it isn't possible use this function 
 //static gboolean fpi_goodix_device_check_receive_data(GoodixMessage *send_message, GoodixMessage *receive_message, GError **error) {
 //     gboolean is_success_reply = send_message->category == receive_message->category 
 //                                     && send_message->command == receive_message->command;
@@ -780,4 +780,44 @@ void fpi_goodix_device_setup_finger_position_detection(FpDevice *dev, enum Finge
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
     fpi_goodix_device_execute_fdt_operation(dev, posix, priv->calibration_params->fdt_base_down, timeout_ms, error);
+}
+
+GByteArray *fpi_goodix_device_wait_for_finger_down(FpDevice *dev, guint timeout_ms, GError **error) {
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    g_autofree GoodixFtdEvent *event = fpi_goodix_device_wait_for_fdt_event(dev, DOWN, timeout_ms, error);
+    g_byte_array_free(priv->calibration_params->fdt_base_up, TRUE);
+    priv->calibration_params->fdt_base_up = fpi_goodix_device_generate_fdt_up_base(event, priv->calibration_params->delta_down, priv->calibration_params->delta_up);
+    return event->ftd_data;
+}
+
+GoodixFtdEvent *fpi_goodix_device_wait_for_fdt_event(FpDevice *dev, enum FingerDetectionOperation posix, guint timeout_ms, GError **error) {
+    return fpi_goodix_device_get_finger_detection_data(dev, posix, timeout_ms, error);
+}
+
+GByteArray *fpi_goodix_device_generate_fdt_up_base(GoodixFtdEvent *event, guint8 delta_down, guint8 delta_up){
+    guint16 fdt_val;
+    // for (gint i = 0; i < event->payload->len; i += 2) {
+    //     fdt_val = event->payload->data[0] | event->payload->data[0] << 8;
+    //     g_byte_array_append(fdt_vals, &fdt_val, 2);
+    // }
+
+    GByteArray *fdt_base_up_vals = g_byte_array_new();
+    for(gint i = 0; i < event->ftd_data->len; i += 2) {
+        fdt_val = (event->ftd_data->data[0] | event->ftd_data->data[0] << 8) + delta_down;
+        fdt_val = fdt_val * 0x100 | fdt_val;
+        g_byte_array_append(fdt_base_up_vals, &fdt_val, 2);
+    }
+    GByteArray *fdt_base_up_vals_update = g_byte_array_new();
+    for(gint i = 0; i < 0xc; i+=2){
+        if(((event->touch_flag >> i) & 1) == 0){
+            //TODO it's better update the already exist chuck of memory than move all in a new GByteArray
+            fdt_val = delta_up * 0x100 | delta_up;
+            g_byte_array_append(fdt_base_up_vals_update, &fdt_val, 2);
+        } else {
+            g_byte_array_append(fdt_base_up_vals_update, &(fdt_base_up_vals->data[i]), 2);
+        }
+    }
+    g_byte_array_free(fdt_base_up_vals, TRUE);
+    return fdt_base_up_vals_update;
 }
