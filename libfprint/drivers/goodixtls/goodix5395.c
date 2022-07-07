@@ -111,7 +111,7 @@ static void fpi_device_goodixtls5395_device_enable(FpDevice *dev, FpiSsm *ssm) {
     }
 
     GoodixMessage *receive_message = NULL;
-    if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
+    if (!fpi_goodix_device_receive_data(dev, &receive_message, 200, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
 
@@ -140,7 +140,7 @@ static void fpi_device_goodixtls5395_check_firmware_version(FpDevice *dev, FpiSs
     }
 
     GoodixMessage *receive_message = NULL;
-    if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
+    if (!fpi_goodix_device_receive_data(dev, &receive_message, 2000, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
 
@@ -169,7 +169,7 @@ static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
     }
 
     GoodixMessage *receive_message = NULL;
-    if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
+    if (!fpi_goodix_device_receive_data(dev, &receive_message, 200, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
 
@@ -205,7 +205,7 @@ static void fpi_device_goodixtls5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
     }
 
     GoodixMessage *receive_message = NULL;
-    if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
+    if (!fpi_goodix_device_receive_data(dev, &receive_message, 1000, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
 
@@ -262,7 +262,7 @@ static void fpi_device_goodixtls5395_write_psk(FpDevice *dev, FpiSsm *ssm) {
     }
 
     GoodixMessage *receive_message = NULL;
-    if (!fpi_goodix_device_receive_data(dev, &receive_message, &error)) {
+    if (!fpi_goodix_device_receive_data(dev, &receive_message, 1000, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
 

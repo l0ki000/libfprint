@@ -52,8 +52,11 @@ typedef struct __attribute__((__packed__)) _GoodixCalibrationParam{
     GByteArray *calib_image;
 } GoodixCalibrationParam;
 
-struct _FpiGoodixDeviceClass
-{
+typedef struct __attribute__((__packed__)) _GoodixFtdEvent{
+    GByteArray *ftd_data;
+    guint16 touch_flag;
+} GoodixFtdEvent;
+struct _FpiGoodixDeviceClass {
     FpImageDeviceClass parent;
     gint interface;
     guint8 ep_in;
@@ -66,9 +69,9 @@ typedef void (*GoodixDeviceReceiveCallback)(FpDevice *dev, GoodixMessage *messag
 gboolean fpi_goodix_device_init_device(FpDevice *dev, GError **error);
 gboolean fpi_goodix_device_deinit_device(FpDevice *dev, GError **error);
 
-gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean calc_checksum, gint timeout_ms,
+gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean calc_checksum, guint timeout_ms,
                             gboolean reply, GError **error);
-gboolean fpi_goodix_device_receive_data(FpDevice *dev, GoodixMessage **message, GError **error);
+gboolean fpi_goodix_device_receive_data(FpDevice *dev, GoodixMessage **message, guint timeout_ms, GError **error);
 void fpi_goodix_device_empty_buffer(FpDevice *dev);
 gboolean fpi_goodix_device_reset(FpDevice *dev, guint8 reset_type, gboolean irq_status);
 void fpi_goodix_device_gtls_connection(FpDevice *dev, FpiSsm *parent_ssm);
@@ -81,7 +84,7 @@ void fpi_goodix_device_set_calibration_params(FpDevice *dev, GByteArray* otp);
 gboolean fpi_goodix_device_set_sleep_mode(FpDevice *dev, GError **error);
 GByteArray *fpi_goodix_device_get_fdt_base_with_tx(FpDevice *dev, gboolean tx_enable, GError **error);
 GByteArray *fpi_goodix_device_execute_fdt_operation(FpDevice *dev, enum FingerDetectionOperation fdt_op, GByteArray *fdt_base, gint timeout_ms, GError **error);
-GByteArray *fpi_goodix_device_get_finger_detection_data(FpDevice *dev, enum FingerDetectionOperation fdt_op, GError **error);
+GoodixFtdEvent* fpi_goodix_device_get_finger_detection_data(FpDevice *dev, enum FingerDetectionOperation fdt_op, guint timeout_ms, GError **error);
 GByteArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gboolean hv_enable, gchar use_dac, gboolean adjust_dac, gboolean is_finger, GError **error);
 GByteArray *fpi_goodix_protocol_get_image(FpDevice *dev, GByteArray *request, gint timeout_ms, GError **error);
 gboolean fpi_goodix_device_validate_base_img(FpDevice *dev, GByteArray *base_image_1, GByteArray *base_image_2);
