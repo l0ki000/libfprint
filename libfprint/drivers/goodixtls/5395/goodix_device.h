@@ -52,10 +52,11 @@ typedef struct __attribute__((__packed__)) _GoodixCalibrationParam{
     GByteArray *calib_image;
 } GoodixCalibrationParam;
 
-typedef struct __attribute__((__packed__)) _GoodixFtdEvent{
+typedef struct _GoodixFtdEvent{
     GByteArray *ftd_data;
     guint16 touch_flag;
 } GoodixFtdEvent;
+
 struct _FpiGoodixDeviceClass {
     FpImageDeviceClass parent;
     gint interface;
@@ -72,10 +73,8 @@ gboolean fpi_goodix_device_deinit_device(FpDevice *dev, GError **error);
 
 gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean calc_checksum, guint timeout_ms,
                             gboolean reply, GError **error);
-gboolean fpi_goodix_device_receive_data(FpDevice *dev, GoodixMessage **message, guint timeout_ms, GError **error);
-void fpi_goodix_device_empty_buffer(FpDevice *dev);
+gboolean fpi_goodix_device_receive(FpDevice *dev, GoodixMessage **message, guint timeout_ms, GError **error);
 gboolean fpi_goodix_device_reset(FpDevice *dev, guint8 reset_type, gboolean irq_status);
-void fpi_goodix_device_gtls_connection(FpDevice *dev, FpiSsm *parent_ssm);
 void fpi_goodix_device_send_mcu(FpDevice *dev, const guint32 data_type, GByteArray *data);
 GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint read_type, GError *error);
 gboolean fpi_goodix_device_fdt_execute_operation(FpDevice *dev, enum FingerDetectionOperation operation, GByteArray *fdt_base, gint timeout_ms, GError **error);
@@ -84,12 +83,8 @@ void fpi_goodix_device_prepare_config(FpDevice *dev, GByteArray *config);
 void fpi_goodix_device_set_calibration_params(FpDevice *dev, GByteArray* otp);
 gboolean fpi_goodix_device_set_sleep_mode(FpDevice *dev, GError **error);
 GByteArray *fpi_goodix_device_get_fdt_base_with_tx(FpDevice *dev, gboolean tx_enable, GError **error);
-GByteArray *fpi_goodix_device_execute_fdt_operation(FpDevice *dev, enum FingerDetectionOperation fdt_op, GByteArray *fdt_base, gint timeout_ms, GError **error);
-GoodixFtdEvent* fpi_goodix_device_get_finger_detection_data(FpDevice *dev, enum FingerDetectionOperation fdt_op, guint timeout_ms, GError **error);
 GByteArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gboolean hv_enable, gchar use_dac, gboolean adjust_dac, gboolean is_finger, GError **error);
-GByteArray *fpi_goodix_protocol_get_image(FpDevice *dev, GByteArray *request, gint timeout_ms, GError **error);
 gboolean fpi_goodix_device_check_receive_data(guint8 category, guint8 command, GoodixMessage *receive_message, GError **error);
-GoodixCalibrationParam *fpi_goodix_device_get_calibration_params(FpDevice *dev);
 void fpi_goodix_device_update_bases(FpDevice *dev, GByteArray *fdt_base);
 gboolean fpi_goodix_device_validate_base_img(FpDevice *dev, GByteArray *base_image_1, GByteArray *base_image_2);
 void fpi_device_update_fdt_bases(FpDevice *dev, GByteArray *fdt_base);
@@ -98,6 +93,5 @@ GByteArray *fpi_device_generate_fdt_base(GByteArray *fdt_data);
 void fpi_device_update_calibration_image(FpDevice *dev, GByteArray *calib_image);
 gboolean fpi_goodix_device_ec_control(FpDevice *dev, gboolean is_enable, gint timeout_ms, GError **error);
 void fpi_goodix_device_setup_finger_position_detection(FpDevice *dev, enum FingerDetectionOperation posix, gint timeout_ms, GError **error);
-GoodixFtdEvent *fpi_goodix_device_wait_for_fdt_event(FpDevice *dev, enum FingerDetectionOperation posix, guint timeout_ms, GError **error);
-GByteArray *fpi_goodix_device_generate_fdt_up_base(GoodixFtdEvent *event, guint8 delta_down, guint8 delta_up);
 GByteArray *fpi_goodix_device_wait_for_finger_down(FpDevice *dev, guint timeout_ms, GError **error);
+void fpi_goodix_device_gtls_connection_handle(FpiSsm *ssm, FpDevice *dev);

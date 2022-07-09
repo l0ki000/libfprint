@@ -82,12 +82,8 @@ enum Goodix5395InitState {
 
 static void fpi_goodix5395_activate_complete(FpiSsm *ssm, FpDevice *dev, GError *error) {
     FpImageDevice *image_dev = FP_IMAGE_DEVICE(dev);
-
-    //fpi_image_device_activate_complete(image_dev, error);
-
-    if (!error) {
-        fpi_image_device_open_complete(image_dev, NULL);  
-    }
+    //TODO Check if the called function kill the program in case of error != NULL
+    fpi_image_device_activate_complete(image_dev, error);
 }
 
 static void fpi_device_goodixtls5395_ping(FpDevice *dev, FpiSsm *ssm) {
@@ -110,7 +106,7 @@ static void fpi_device_goodixtls5395_device_enable(FpDevice *dev, FpiSsm *ssm) {
     }
 
     GoodixMessage *receive_message = NULL;
-    if (!fpi_goodix_device_receive_data(dev, &receive_message, 200, &error)) {
+    if (!fpi_goodix_device_receive(dev, &receive_message, 200, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
     fp_dbg("Check!");
@@ -139,7 +135,7 @@ static void fpi_device_goodixtls5395_check_firmware_version(FpDevice *dev, FpiSs
     }
 
     GoodixMessage *receive_message = NULL;
-    if (!fpi_goodix_device_receive_data(dev, &receive_message, 2000, &error)) {
+    if (!fpi_goodix_device_receive(dev, &receive_message, 2000, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
 
@@ -168,7 +164,7 @@ static void fpi_device_goodixtls5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
     }
 
     GoodixMessage *receive_message = NULL;
-    if (!fpi_goodix_device_receive_data(dev, &receive_message, 200, &error)) {
+    if (!fpi_goodix_device_receive(dev, &receive_message, 200, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
 
@@ -204,7 +200,7 @@ static void fpi_device_goodixtls5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
     }
 
     GoodixMessage *receive_message = NULL;
-    if (!fpi_goodix_device_receive_data(dev, &receive_message, 1000, &error)) {
+    if (!fpi_goodix_device_receive(dev, &receive_message, 1000, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
 
@@ -261,7 +257,7 @@ static void fpi_device_goodixtls5395_write_psk(FpDevice *dev, FpiSsm *ssm) {
     }
 
     GoodixMessage *receive_message = NULL;
-    if (!fpi_goodix_device_receive_data(dev, &receive_message, 1000, &error)) {
+    if (!fpi_goodix_device_receive(dev, &receive_message, 1000, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
 
@@ -300,24 +296,6 @@ static gboolean fpi_goodix5395_is_fdt_base_valid(const GByteArray *fdt_base_1, c
     return TRUE;
 }
 
-static void fpi_goodix5395_validate_base_img(GByteArray *base_image_1, GByteArray *base_image_2, guint8 image_threshold) {
-    // assert len(base_image_1) == SENSOR_WIDTH * SENSOR_HEIGHT
-    // assert len(base_image_2) == SENSOR_WIDTH * SENSOR_HEIGHT
-
-    // diff_sum = 0
-    // for row_idx in range(2, SENSOR_HEIGHT - 2):
-    //     for col_idx in range(2, SENSOR_WIDTH - 2):
-    //         offset = row_idx * SENSOR_WIDTH + col_idx
-    //         image_val_1 = base_image_1[offset]
-    //         image_val_2 = base_image_2[offset]
-    //         diff_sum += abs(image_val_2 - image_val_1)
-
-    // avg = diff_sum / ((SENSOR_HEIGHT - 4) * (SENSOR_WIDTH - 4))
-    // logging.debug(f"Checking image data, avg: {avg:.2f}, threshold: {image_threshold}")
-    // if avg > image_threshold:
-    //     raise Exception("Invalid base image")
-
-}
 
 static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     //upload config
@@ -326,38 +304,6 @@ static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     GError *error = NULL;
     GByteArray *fdt_data_tx_enabled = fpi_goodix_device_get_fdt_base_with_tx(dev, TRUE, &error);
 
-    // GByteArray *image_tx_enable = fpi_goodix_device_get_image(dev, TRUE, TRUE, 'l', FALSE, FALSE, &error);
-//     GByteArray *fdt_data_tx_disabled = fpi_goodix_device_get_fdt_base_with_tx(dev, FALSE, &error);
-//     GoodixCalibrationParam *params = fpi_goodix_device_get_calibration_params(dev);
-//     gboolean is_fdt_valid = fpi_goodix5395_is_fdt_base_valid(fdt_data_tx_enabled, fdt_data_tx_disabled, params->delta_fdt);
-//     fp_dbg("Check fdt data %d", is_fdt_valid);
-//     if (!is_fdt_valid) {
-//         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(UPDATE_ALL_BASE, "Invalid FDT, is_valid_fdt: %d", is_fdt_valid))
-//     }
-
-//     GByteArray *image_tx_disabled = fpi_goodix_device_get_image(dev, FALSE, FALSE, 'l', FALSE, FALSE, &error);
-//     fpi_goodix5395_validate_base_img(image_tx_enable, image_tx_disabled, params->delta_img);
-//     GByteArray *fdt_data_tx_enabled_2 = fpi_goodix_device_get_fdt_base_with_tx(dev, TRUE, &error);
-//     is_fdt_valid = fpi_goodix5395_is_fdt_base_valid(fdt_data_tx_enabled_2, fdt_data_tx_disabled, params->delta_fdt);
-//     fp_dbg("Check fdt data %d", is_fdt_valid);
-//     if (!is_fdt_valid) {
-//         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(UPDATE_ALL_BASE, "Invalid FDT, is_valid_fdt: %d", is_fdt_valid))
-//     }    
-
-
-//     GByteArray *generated_fdt_base = fpi_goodix_protocol_generate_fdt_base(fdt_data_tx_enabled);
-//     fpi_goodix_device_update_bases(dev, generated_fdt_base);
-//     params->calib_image = image_tx_enable;
-//     fp_dbg("FDT manual base: %s", fpi_goodix_protocol_data_to_str(params->fdt_base_manual, params->fdt_base_manual->len));
-//     fp_dbg("Decoding and saving calibration image");
-//     //TODO: it shoold get width and heightfrom fpi image device class
-//     fpi_goodix_protocol_write_pgm(params->calib_image, 108, 88, "test.pgm");  
-// }
-
-// static void fpi_goodix5395_set_sleep_mode(FpDevice* dev, FpiSsm* ssm) {
-//     GError *error = NULL;
-//     if (!fpi_goodix_device_set_sleep_mode(dev, &error)) {
-//         FAIL_SSM_AND_RETURN(ssm, error)
     GByteArray *image_tx_enabled = fpi_goodix_device_get_image(dev, TRUE, TRUE, 'l', FALSE, FALSE, &error);
 
     GByteArray *fdt_data_tx_disabled = fpi_goodix_device_get_fdt_base_with_tx(dev, FALSE, &error);
@@ -397,6 +343,11 @@ static void fpi_goodix5395_set_sleep_mode(FpDevice *dev, FpiSsm *ssm){
         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(UPDATE_ALL_BASE, "Error set sleep mode", NULL));
     }
     fpi_ssm_next_state(ssm);
+}
+
+
+static void fpi_goodix_device_gtls_connection(FpDevice *dev, FpiSsm *parent_ssm) {
+    fpi_ssm_start_subsm(parent_ssm, fpi_ssm_new(dev, fpi_goodix_device_gtls_connection_handle, ESTABLISH_CONNECTION_STATES_NUM));
 }
 
 static void fpi_goodix5395_run_init_state(FpiSsm *ssm, FpDevice *dev) {
@@ -468,15 +419,10 @@ static void fpi_device_goodixtls5395_img_close(FpImageDevice *img_dev) {
   fpi_image_device_close_complete(img_dev, NULL);
 }
 
-// TODO static void fpi_device_goodixtls5395_activate(FpImageDevice *img_dev) {
-//     FpDevice *dev = FP_DEVICE(img_dev);
-//     fpi_ssm_start(fpi_ssm_new(dev, fpi_goodix5395_run_activate_state, DEVICE_ACTIVATE_END), NULL);
 static void fpi_device_goodixtls5395_activate_device(FpImageDevice *img_dev) {
   FpDevice *dev = FP_DEVICE(img_dev);
   run_capture_state(dev);
 }
-
-static void fpi_device_goodixtls5395_change_state(FpImageDevice *img_dev, FpiImageDeviceState state) {}
 
 static void fpi_device_goodixtls5395_deactivate(FpImageDevice *img_dev) {
   fpi_image_device_deactivate_complete(img_dev, NULL);
@@ -484,8 +430,7 @@ static void fpi_device_goodixtls5395_deactivate(FpImageDevice *img_dev) {
 
 // ---- DEV SECTION END ----
 
-static void fpi_device_goodixtls5395_init(FpiDeviceGoodixTls5395 *self) {
-}
+static void fpi_device_goodixtls5395_init(FpiDeviceGoodixTls5395 *self) {}
 
 static void fpi_device_goodixtls5395_class_init(FpiDeviceGoodixTls5395Class *class) {
   FpiGoodixDeviceClass *gx_class = FPI_GOODIX_DEVICE_CLASS(class);
@@ -511,9 +456,8 @@ static void fpi_device_goodixtls5395_class_init(FpiDeviceGoodixTls5395Class *cla
     image_device_class->img_open = fpi_device_goodixtls5395_img_open;
     image_device_class->img_close = fpi_device_goodixtls5395_img_close;
     image_device_class->activate = fpi_device_goodixtls5395_activate_device;
-    image_device_class->change_state = fpi_device_goodixtls5395_change_state;
     image_device_class->deactivate = fpi_device_goodixtls5395_deactivate;
 
-    fpi_device_class_auto_initialize_features(device_class);
-    device_class->features &= ~FP_DEVICE_FEATURE_VERIFY;
+    // TODO fpi_device_class_auto_initialize_features(device_class);
+    // device_class->features &= ~FP_DEVICE_FEATURE_VERIFY;
 }
