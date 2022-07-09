@@ -91,11 +91,8 @@ static void fpi_goodix5395_activate_complete(FpiSsm *ssm, FpDevice *dev, GError 
 }
 
 static void fpi_device_goodixtls5395_ping(FpDevice *dev, FpiSsm *ssm) {
-    fpi_goodix_device_empty_buffer(dev);
-    guint8 payload[] = {0, 0};
-    GoodixMessage *message = fpi_goodix_protocol_create_message(0, 0x00, payload, 2);
     GError *error = NULL;
-    if (fpi_goodix_device_send(dev, message, TRUE, 500, FALSE, &error)) {
+    if (fpi_goodix_device_ping(dev, &error)) {
         fpi_ssm_next_state(ssm);
     } else {
         fpi_ssm_mark_failed(ssm, error);

@@ -111,6 +111,12 @@ static gboolean fpi_goodix_device_receive_chunk(FpDevice *dev, GByteArray *data,
     return success;
 }
 
+gboolean fpi_goodix_device_ping(FpDevice *dev, GError **error) {
+    fpi_goodix_device_empty_buffer(dev);
+    guint8 payload[] = {0, 0};
+    return fpi_goodix_device_send(dev, fpi_goodix_protocol_create_message(0, 0x00, payload, 2), TRUE, 500, FALSE, error);
+}
+
 gboolean fpi_goodix_device_receive_data(FpDevice *dev, GoodixMessage **message, guint timeout_ms, GError **error) {
     GByteArray *buffer = g_byte_array_new();
     glong message_length = 0;

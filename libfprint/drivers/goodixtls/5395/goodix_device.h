@@ -66,6 +66,7 @@ struct _FpiGoodixDeviceClass {
 
 typedef void (*GoodixDeviceReceiveCallback)(FpDevice *dev, GoodixMessage *message, GError *error);
 
+gboolean fpi_goodix_device_ping(FpDevice *dev, GError **error);
 gboolean fpi_goodix_device_init_device(FpDevice *dev, GError **error);
 gboolean fpi_goodix_device_deinit_device(FpDevice *dev, GError **error);
 
