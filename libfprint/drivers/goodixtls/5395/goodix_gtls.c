@@ -38,12 +38,12 @@ GoodixGTLSParams *fpi_goodix_device_gtls_init_params(void) {
     return params;
 }
 
-GByteArray *fpi_goodix_gtls_create_hello_message() {
+GByteArray *fpi_goodix_gtls_create_hello_message(void) {
     GByteArray *res = g_byte_array_new();
     GRand *rand = g_rand_new();
     for (int i = 0; i < 8; i++) {
         guint32 r = g_rand_int(rand);
-        g_byte_array_append(res, &r, sizeof(guint32));
+        g_byte_array_append(res, (guint8 *)&r, sizeof(guint32));
     }
     g_rand_free(rand);
     return res;
@@ -94,12 +94,12 @@ gboolean fpi_goodix_gtls_derive_key(GoodixGTLSParams *params) {
 }
 
 GByteArray *fpi_goodix_gtls_decrypt_sensor_data(GoodixGTLSParams *params, GByteArray *encrypted_message, GError **error) {
-    guint32 data_type = encrypted_message->data[0] | encrypted_message->data[1] << 0x8 | encrypted_message->data[2] << 0x10 | encrypted_message->data[3] << 0x100;
+    guint32 data_type = encrypted_message->data[0] | encrypted_message->data[1] << 8 | encrypted_message->data[2] << 0x10 | encrypted_message->data[3] << 0x11;
     if (data_type != 0xAA01) {
         return NULL;
         // TODO  raise Exception("Unexpected data type")
     }
-    guint32 msg_length = encrypted_message->data[4] | encrypted_message->data[5] << 0x8 | encrypted_message->data[6] << 0x10 | encrypted_message->data[7] << 0x100;
+    guint32 msg_length = encrypted_message->data[4] | encrypted_message->data[5] << 0x8 | encrypted_message->data[6] << 0x10 | encrypted_message->data[7] << 0x11;
     if (msg_length != encrypted_message->len) {
         return NULL;
         // TODO  raise Exception("Length mismatch")
@@ -138,7 +138,7 @@ GByteArray *fpi_goodix_gtls_decrypt_sensor_data(GoodixGTLSParams *params, GByteA
         }
     }
     GByteArray *hmac_data = g_byte_array_new();
-    g_byte_array_append(hmac_data, &(params->hmac_server_counter), 4);
+    g_byte_array_append(hmac_data, (guint8 *)&(params->hmac_server_counter), 4);
     g_byte_array_append(hmac_data, &(gea_encrypted_data->data[gea_encrypted_data->len - 0x400]), 0x400);
     GByteArray *computed_hmac = crypto_utils_HMAC_SHA256(params->hmac_key, hmac_data);
     if (computed_hmac->len != payload_hmac->len || memcmp(computed_hmac->data, payload_hmac->data, computed_hmac->len)) {
@@ -148,7 +148,7 @@ GByteArray *fpi_goodix_gtls_decrypt_sensor_data(GoodixGTLSParams *params, GByteA
     fp_dbg("Encrypted payload HMAC verified");
     params->hmac_server_counter = (params->hmac_server_counter + 1) & 0xFFFFFFFF;
 
-    fp_dbg("HMAC server counter is now: %s", fpi_goodix_protocol_data_to_str(params->hmac_server_counter, 2));
+    fp_dbg("HMAC server counter is now: %d", params->hmac_server_counter);
 
     if (gea_encrypted_data->len < 5) {
         //   TODO      raise Exception("Encrypted payload too short")
@@ -158,19 +158,19 @@ GByteArray *fpi_goodix_gtls_decrypt_sensor_data(GoodixGTLSParams *params, GByteA
     g_byte_array_remove_range(gea_encrypted_data, 0, 5);
     guint8 *ptr = &(gea_encrypted_data->data[gea_encrypted_data->len - 4]);
     guint msg_gea_crc = *ptr << 24 | (ptr)[1] << 16 | ptr[2] << 8 | ptr[3];
-    printf("msg_gea_crc: %x", msg_gea_crc);
+    fp_dbg("msg_gea_crc: %x", msg_gea_crc);
     msg_gea_crc = ptr[0] * 0x100 + ptr[1] + ptr[2] * 0x1000000 + ptr[3] * 0x10000;
-    printf("msg_gea_crc: %x", msg_gea_crc);
+    fp_dbg("msg_gea_crc: %x", msg_gea_crc);
     g_byte_array_remove_range(gea_encrypted_data, gea_encrypted_data->len - 4, 4);
 
-    fp_dbg("GEA data CRC: %s", fpi_goodix_protocol_data_to_str(&msg_gea_crc, 4));
+    fp_dbg("GEA data CRC: %s", fpi_goodix_protocol_data_to_str((guint8 *)&msg_gea_crc, 4));
     guint computed_gea_crc = crypto_utils_crc32_mpeg2_calc((gea_encrypted_data->data), gea_encrypted_data->len);
     if(computed_gea_crc != msg_gea_crc) {
           //          raise Exception("CRC check failed")
           return NULL;
     }
     fp_dbg("GEA data CRC verified");
-    gint32 gea_key = gea_encrypted_data->data[0] | gea_encrypted_data->data[1] << 0x10 | gea_encrypted_data->data[2] << 0x100 | gea_encrypted_data->data[3] << 0x1000;
+    gint32 gea_key = gea_encrypted_data->data[0] | gea_encrypted_data->data[1] << 0x8 | gea_encrypted_data->data[2] << 0x10 | gea_encrypted_data->data[3] << 0x11;
     fp_dbg("GEA key: %x", gea_key);
     return ctypto_utils_gea_decrypt(gea_key, gea_encrypted_data);
 }

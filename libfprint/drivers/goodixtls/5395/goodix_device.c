@@ -209,16 +209,16 @@ static GByteArray *fpi_goodix_device_generate_fdt_up_base(GoodixFtdEvent *event,
     for(gint i = 0; i < event->ftd_data->len; i += 2) {
         fdt_val = (event->ftd_data->data[0] | event->ftd_data->data[0] << 8) + delta_down;
         fdt_val = fdt_val * 0x100 | fdt_val;
-        g_byte_array_append(fdt_base_up_vals, &fdt_val, 2);
+        g_byte_array_append(fdt_base_up_vals, (guint8 *)&fdt_val, 2);
     }
     GByteArray *fdt_base_up_vals_update = g_byte_array_new();
     for(gint i = 0; i < 0xc; i+=2){
         if(((event->touch_flag >> i) & 1) == 0){
             //TODO it's better update the already exist chuck of memory than move all in a new GByteArray
             fdt_val = delta_up * 0x100 | delta_up;
-            g_byte_array_append(fdt_base_up_vals_update, &fdt_val, 2);
+            g_byte_array_append(fdt_base_up_vals_update, (guint8 *)&fdt_val, 2);
         } else {
-            g_byte_array_append(fdt_base_up_vals_update, &(fdt_base_up_vals->data[i]), 2);
+            g_byte_array_append(fdt_base_up_vals_update, (guint8 *)&(fdt_base_up_vals->data[i]), 2);
         }
     }
     g_byte_array_free(fdt_base_up_vals, TRUE);
@@ -388,6 +388,7 @@ gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean 
 }
 
 gboolean fpi_goodix_device_reset(FpDevice *dev, guint8 reset_type, gboolean irq_status) {
+    g_assert(reset_type < 3);
     guint16 payload;
     switch (reset_type) {
         case 0:{
@@ -440,8 +441,8 @@ GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint32 read_type, GError 
     GByteArray *msg_payload = g_byte_array_new();
     g_byte_array_append(msg_payload, message->payload->data, message->payload->len);
     fpi_goodix_protocol_free_message(message);
-    guint32 read_type_recv = (guint32)(msg_payload->data[0] | msg_payload->data[1] << 8 | msg_payload->data[2] << 16 | msg_payload->data[3] << 32);
-    guint32 payload_size_recv  = (guint32)(msg_payload->data[4] | msg_payload->data[5] << 8 | msg_payload->data[6] << 16 | msg_payload->data[7] << 32);
+    guint32 read_type_recv = (guint32)(msg_payload->data[0] | msg_payload->data[1] << 8 | msg_payload->data[2] << 16 | msg_payload->data[3] << 24);
+    guint32 payload_size_recv  = (guint32)(msg_payload->data[4] | msg_payload->data[5] << 8 | msg_payload->data[6] << 16 | msg_payload->data[7] << 24);
     
     if (read_type != read_type_recv) {
         g_set_error(&error, 1, 1, "Wrong read_type, excepted: %02x - received: %s", read_type, fpi_goodix_protocol_data_to_str(message->payload->data, sizeof(read_type)));
@@ -662,7 +663,7 @@ gboolean fpi_goodix_device_is_fdt_base_valid(FpDevice *dev, GByteArray *fdt_data
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
     guint16 fdt_val_1, fdt_val_2;
     gint16 delta;
-    fp_dbg("Checking FDT data, max delta: %lf", priv->calibration_params->delta_fdt);
+    fp_dbg("Checking FDT data, max delta: %d", priv->calibration_params->delta_fdt);
     for (int i = 0; i < fdt_data_1->len; i = i + 2) {
         fdt_val_1 = fdt_data_1->data[i] | fdt_data_1->data[i + 1] << 8;
         fdt_val_2 = fdt_data_2->data[i] | fdt_data_2->data[i + 1] << 8;
