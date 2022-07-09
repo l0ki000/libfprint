@@ -15,10 +15,11 @@
 // You should have received a copy of the GNU Lesser General Public
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
-#include "goodix_gtls.h"
 
 #include <glib.h>
 
+#include "fpi-usb-transfer.h"
+#include "fpi-log.h"
 #include "goodix_gtls.h"
 #include "crypto_utils.h"
 
@@ -109,7 +110,7 @@ GByteArray *fpi_goodix_gtls_decrypt_sensor_data(GoodixGTLSParams *params, GByteA
 
     GByteArray *payload_hmac = g_byte_array_new();
     g_byte_array_append(payload_hmac, &(encrypted_message->data[encrypted_message->len - 0x20]), 0x20);
-    // TODO fp_dbg("HMAC for encrypted payload: %s", fpi_goodix_protocol_data_to_str(payload_hmac->data, payload_hmac->len));
+    fp_dbg("HMAC for encrypted payload: %s", fpi_goodix_protocol_data_to_str(payload_hmac->data, payload_hmac->len));
 
     GByteArray *gea_encrypted_data = g_byte_array_new();
     for (size_t block_idx = 0; block_idx < 15; block_idx++) {
@@ -144,10 +145,10 @@ GByteArray *fpi_goodix_gtls_decrypt_sensor_data(GoodixGTLSParams *params, GByteA
         // TODO raise Exception("HMAC verification failed")
         return NULL;
     }
-    // TODO fp_dbg("Encrypted payload HMAC verified");
+    fp_dbg("Encrypted payload HMAC verified");
     params->hmac_server_counter = (params->hmac_server_counter + 1) & 0xFFFFFFFF;
 
-    // fp_dbg("HMAC server counter is now: %s", fpi_goodix_protocol_data_to_str(params->hmac_server_counter, 2));
+    fp_dbg("HMAC server counter is now: %s", fpi_goodix_protocol_data_to_str(params->hmac_server_counter, 2));
 
     if (gea_encrypted_data->len < 5) {
         //   TODO      raise Exception("Encrypted payload too short")
@@ -162,15 +163,14 @@ GByteArray *fpi_goodix_gtls_decrypt_sensor_data(GoodixGTLSParams *params, GByteA
     printf("msg_gea_crc: %x", msg_gea_crc);
     g_byte_array_remove_range(gea_encrypted_data, gea_encrypted_data->len - 4, 4);
 
-    // fp_dbg("GEA data CRC: %s", fpi_goodix_protocol_data_to_str(&msg_gea_crc, 4));
-    //  TODO
+    fp_dbg("GEA data CRC: %s", fpi_goodix_protocol_data_to_str(&msg_gea_crc, 4));
     guint computed_gea_crc = crypto_utils_crc32_mpeg2_calc((gea_encrypted_data->data), gea_encrypted_data->len);
     if(computed_gea_crc != msg_gea_crc) {
           //          raise Exception("CRC check failed")
           return NULL;
     }
-    //      logging.debug("GEA data CRC verified")
+    fp_dbg("GEA data CRC verified");
     gint32 gea_key = gea_encrypted_data->data[0] | gea_encrypted_data->data[1] << 0x10 | gea_encrypted_data->data[2] << 0x100 | gea_encrypted_data->data[3] << 0x1000;
-    // fp_dbg("GEA key: %x", gea_key);
+    fp_dbg("GEA key: %x", gea_key);
     return ctypto_utils_gea_decrypt(gea_key, gea_encrypted_data);
 }
