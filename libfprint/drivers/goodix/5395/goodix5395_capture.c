@@ -24,11 +24,16 @@
 #include "goodix5395_capture.h"
 #include "goodix_device.h"
 
+#define SENSOR_WIDTH 108
+#define SENSOR_HEIGHT 88
+
 enum Goodix5395ActivateState {
     POWER_ON,
     FINGER_DOWN_DETECTION,
-    WAITING_FINGER,
+    WAITING_FINGER_DOWN,
+    READING_FINGER_IMAGE,
     FINGER_UP_DETECTION,
+    WAITING_FINGER_UP,
     AC_SET_SLEEP_MODE,
     POWER_OFF,
     DEVICE_ACTIVATE_END,
@@ -36,9 +41,8 @@ enum Goodix5395ActivateState {
 
 static void fpi_goodix5395_ec_control(FpDevice *dev, FpiSsm *ssm, gboolean on, gint timeout_ms){
     GError *error = NULL;
-    fpi_goodix_device_ec_control(dev, TRUE, 200, &error);
-    if (error){
-        FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(fpi_ssm_get_cur_state(ssm), "Error ec control", NULL));
+    if (!fpi_goodix_device_ec_control(dev, TRUE, 200, &error)){
+        FAIL_SSM_AND_RETURN(ssm, error);
     }
     fpi_ssm_next_state(ssm);
 }
@@ -52,12 +56,26 @@ static void fpi_goodix_device5395_finger_position_detection(FpDevice *dev, FpiSs
     fpi_ssm_next_state(ssm);
 }
 
-static void fpi_goodix_device5395_wait_for_finger_up(FpDevice *dev, FpiSsm *ssm) {
+static void fpi_goodix_device5395_wait_for_finger_down(FpDevice *dev, FpiSsm *ssm) {
     GError *error = NULL;
-    fpi_goodix_device_wait_for_finger_down(dev, 1000000, &error);
-    if(error) {
+    if(!fpi_goodix_device_wait_for_finger(dev, 1000000, DOWN, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error);
     }
+    fpi_ssm_next_state(ssm);
+}
+
+static void fpi_goodix_device5395_wait_for_finger_up(FpDevice *dev, FpiSsm *ssm) {
+    GError *error = NULL;
+    if(!fpi_goodix_device_wait_for_finger(dev, 1000000, UP, &error)) {
+        FAIL_SSM_AND_RETURN(ssm, error);
+    }
+    fpi_ssm_next_state(ssm);
+}
+
+static void fpi_goodix_device5395_read_finger(FpDevice *dev, FpiSsm *ssm) {
+    GError *error = NULL;
+    GByteArray *finger_image = fpi_goodix_device_get_image(dev, TRUE, TRUE, 'h', FALSE, TRUE, &error);
+    fpi_goodix_protocol_write_pgm(finger_image, SENSOR_WIDTH, SENSOR_HEIGHT, "finger.pgm");
     fpi_ssm_next_state(ssm);
 }
 
@@ -72,12 +90,29 @@ static void fpi_goodix5395_run_activate_state(FpiSsm *ssm, FpDevice *dev) {
             fp_info("Setting up finger down detection");
             fpi_goodix_device5395_finger_position_detection(dev, ssm, DOWN, 500);
             break;
-        case WAITING_FINGER:
+        case WAITING_FINGER_DOWN:
+            fp_info("Waiting for finger down");
+            fpi_goodix_device5395_wait_for_finger_down(dev, ssm);
+            break;
+        case READING_FINGER_IMAGE: {
+            fp_info("Reading finger image.");
+            fpi_goodix_device5395_read_finger(dev, ssm);
+        }
+            break;
+        case FINGER_UP_DETECTION: {
+            fp_info("Setting up finger up detection...");
+            fpi_goodix_device5395_finger_position_detection(dev, ssm, UP, 500);
+        }
+            break;
+        case WAITING_FINGER_UP: {
             fp_info("Waiting for finger up");
             fpi_goodix_device5395_wait_for_finger_up(dev, ssm);
+        }
             break;
-        case FINGER_UP_DETECTION:
-            fp_info("Setting up finger up detection...");
+        case AC_SET_SLEEP_MODE: {
+            fp_info("AC set sleep mode.");
+
+        }
             break;
     }
 }

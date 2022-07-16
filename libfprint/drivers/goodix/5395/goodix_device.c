@@ -699,7 +699,7 @@ gboolean fpi_goodix_device_validate_base_img(FpDevice *dev, GByteArray *base_ima
     return TRUE;
 }
 
-GByteArray *fpi_device_generate_fdt_base(GByteArray *fdt_data){
+GByteArray *fpi_goodix_device_generate_fdt_base(GByteArray *fdt_data){
     GByteArray *fdt_base = g_byte_array_new();
     guint16 fdt_val, fdt_base_val;
     for (int idx = 0; idx <= fdt_data->len; idx += 2) {
@@ -739,19 +739,25 @@ void fpi_device_update_calibration_image(FpDevice *dev, GByteArray *calib_image)
     priv->calibration_params->calib_image = calib_image;
 }
 
-void fpi_goodix_device_setup_finger_position_detection(FpDevice *dev, enum FingerDetectionOperation posix, gint timeout_ms, GError **error){
+void fpi_goodix_device_setup_finger_position_detection(FpDevice *dev, enum FingerDetectionOperation fdo, gint timeout_ms, GError **error){
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
-    fpi_goodix_device_execute_fdt_operation(dev, posix, priv->calibration_params->fdt_base_down, timeout_ms, error);
+    GByteArray *fdt_base = fdo == DOWN ? priv->calibration_params->fdt_base_down : priv->calibration_params->fdt_base_up;
+    fpi_goodix_device_execute_fdt_operation(dev, fdo, fdt_base, timeout_ms, error);
 }
 
-GByteArray *fpi_goodix_device_wait_for_finger_down(FpDevice *dev, guint timeout_ms, GError **error) {
+GByteArray *fpi_goodix_device_wait_for_finger(FpDevice *dev, guint timeout_ms, enum FingerDetectionOperation fdo, GError **error) {
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
     //TODO check if it's freed also the memory area returned
-    g_autofree GoodixFtdEvent *event = fpi_goodix_device_wait_fdt_event(dev, DOWN, timeout_ms, error);
-    g_byte_array_free(priv->calibration_params->fdt_base_up, TRUE);
-    priv->calibration_params->fdt_base_up = fpi_goodix_device_generate_fdt_up_base(event, priv->calibration_params->delta_down, priv->calibration_params->delta_up);
+    g_autofree GoodixFtdEvent *event = fpi_goodix_device_wait_fdt_event(dev, fdo, timeout_ms, error);
+    if (fdo == DOWN) {
+        g_byte_array_free(priv->calibration_params->fdt_base_down, TRUE);
+        priv->calibration_params->fdt_base_down = fpi_goodix_device_generate_fdt_base(event->ftd_data);
+    } else {
+        g_byte_array_free(priv->calibration_params->fdt_base_up, TRUE);
+        priv->calibration_params->fdt_base_up = fpi_goodix_device_generate_fdt_up_base(event, priv->calibration_params->delta_down, priv->calibration_params->delta_up);   
+    }
     return event->ftd_data;
 }
 

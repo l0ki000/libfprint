@@ -326,7 +326,7 @@ static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(UPDATE_ALL_BASE, "Invalid FDT", NULL));
     }
 
-    fpi_device_update_fdt_bases(dev, fpi_device_generate_fdt_base(fdt_data_tx_enabled));
+    fpi_device_update_fdt_bases(dev, fpi_goodix_device_generate_fdt_base(fdt_data_tx_enabled));
     fpi_device_update_calibration_image(dev, image_tx_enabled);
 
     fpi_ssm_next_state(ssm);
