@@ -155,6 +155,7 @@ static GoodixFtdEvent* fpi_goodix_device_get_finger_detection_data(FpDevice *dev
     GoodixFtdEvent *event = g_malloc(sizeof(GoodixFtdEvent));
     event->ftd_data = g_byte_array_new();
     g_byte_array_append(event->ftd_data, reply->payload->data, reply->payload->len);
+    event->touch_flag = touch_flag;
 
     return event;
 }
@@ -183,10 +184,7 @@ static GByteArray *fpi_goodix_device_execute_fdt_operation(FpDevice *dev, enum F
     g_byte_array_append(payload, &op_code, 1);
     g_byte_array_append(payload, &one, 1);
     g_byte_array_append(payload, fdt_base->data, fdt_base->len);
-    GoodixMessage *message = g_malloc0(sizeof(GoodixMessage));
-    message->category = 0x3;
-    message->command = fdt_op;
-    message->payload = payload;
+    GoodixMessage *message = fpi_goodix_protocol_create_message_byte_array(0x3, fdt_op, payload);
     if (!fpi_goodix_device_send(dev, message, TRUE, timeout_ms, FALSE, error)) {
         return FALSE;
     }
@@ -194,39 +192,46 @@ static GByteArray *fpi_goodix_device_execute_fdt_operation(FpDevice *dev, enum F
         return NULL;
     }
     GoodixFtdEvent *fdt_event = fpi_goodix_device_get_finger_detection_data(dev, fdt_op, timeout_ms, error);
-    g_byte_array_remove_range(fdt_event->ftd_data, 0, 2); //remove the touch_flag bytes
     return fdt_event->ftd_data;
 }
 
 static GByteArray *fpi_goodix_device_generate_fdt_up_base(GoodixFtdEvent *event, guint8 delta_down, guint8 delta_up){
     guint16 fdt_val;
-    // for (gint i = 0; i < event->payload->len; i += 2) {
-    //     fdt_val = event->payload->data[0] | event->payload->data[0] << 8;
-    //     g_byte_array_append(fdt_vals, &fdt_val, 2);
-    // }
-
-    GByteArray *fdt_base_up_vals = g_byte_array_new();
-    for(gint i = 0; i < event->ftd_data->len; i += 2) {
-        fdt_val = (event->ftd_data->data[0] | event->ftd_data->data[0] << 8) + delta_down;
-        fdt_val = fdt_val * 0x100 | fdt_val;
-        g_byte_array_append(fdt_base_up_vals, (guint8 *)&fdt_val, 2);
+    const gint buffer_size = event->ftd_data->len / 2;
+    fp_dbg("Beffer size is %d", buffer_size);
+    guint16 *buffer = g_malloc0(buffer_size);
+    for (gint i = 0; i < buffer_size; i++) {
+        buffer[i] = event->ftd_data->data[2 * i] | event->ftd_data->data[2 * i + 1] << 8;
     }
-    GByteArray *fdt_base_up_vals_update = g_byte_array_new();
-    for(gint i = 0; i < 0xc; i+=2){
-        if(((event->touch_flag >> i) & 1) == 0){
-            //TODO it's better update the already exist chuck of memory than move all in a new GByteArray
-            fdt_val = delta_up * 0x100 | delta_up;
-            g_byte_array_append(fdt_base_up_vals_update, (guint8 *)&fdt_val, 2);
-        } else {
-            g_byte_array_append(fdt_base_up_vals_update, (guint8 *)&(fdt_base_up_vals->data[i]), 2);
+    
+
+    for(gint i = 0; i < buffer_size; i++) {
+        fdt_val = buffer[i] >> 1 + delta_down;
+        fdt_val = fdt_val * 0x100 | fdt_val;
+        buffer[i] = fdt_val;
+    }
+
+    
+    for(gint i = 0; i < 0xc; i++){
+        if(((event->touch_flag >> i) & 1) == 0) {
+            buffer[i] = delta_up * 0x100 | delta_up;
         }
     }
-    g_byte_array_free(fdt_base_up_vals, TRUE);
+
+    GByteArray *fdt_base_up_vals_update = g_byte_array_new();
+    guint8 encode_buffer[2] = {};
+    for (gint i = 0; i < buffer_size; i++) {
+        encode_buffer[0] = buffer[i] & 0xFF;
+        encode_buffer[1] = buffer[i] >> 8;
+        g_byte_array_append(fdt_base_up_vals_update, encode_buffer, 2);
+    }
+    fp_dbg("FDT BASE Length %d", fdt_base_up_vals_update->len);
+    g_free(buffer);
     return fdt_base_up_vals_update;
 }
 
-static GoodixFtdEvent *fpi_goodix_device_wait_fdt_event(FpDevice *dev, enum FingerDetectionOperation posix, guint timeout_ms, GError **error) {
-    return fpi_goodix_device_get_finger_detection_data(dev, posix, timeout_ms, error);
+static GoodixFtdEvent *fpi_goodix_device_wait_fdt_event(FpDevice *dev, enum FingerDetectionOperation fdo, guint timeout_ms, GError **error) {
+    return fpi_goodix_device_get_finger_detection_data(dev, fdo, timeout_ms, error);
 }
 
 static GByteArray *fpi_goodix_protocol_get_image(FpDevice *dev, GByteArray *request, gint timeout_ms, GError **error) {
@@ -702,11 +707,12 @@ gboolean fpi_goodix_device_validate_base_img(FpDevice *dev, GByteArray *base_ima
 GByteArray *fpi_goodix_device_generate_fdt_base(GByteArray *fdt_data){
     GByteArray *fdt_base = g_byte_array_new();
     guint16 fdt_val, fdt_base_val;
-    for (int idx = 0; idx <= fdt_data->len; idx += 2) {
+    for (int idx = 0; idx < fdt_data->len; idx += 2) {
         fdt_val = fdt_data->data[idx] | fdt_data->data[idx + 1] << 8;
         fdt_base_val = (fdt_val & 0xFFFE) * 0x80 | fdt_val >> 1;
         g_byte_array_append(fdt_base, (guint8*)(&fdt_base_val), 2);
     }
+    fp_dbg("GEnerated fdt base %d", fdt_base->len);
     return fdt_base;
 }
 
@@ -751,7 +757,7 @@ GByteArray *fpi_goodix_device_wait_for_finger(FpDevice *dev, guint timeout_ms, e
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
     //TODO check if it's freed also the memory area returned
     g_autofree GoodixFtdEvent *event = fpi_goodix_device_wait_fdt_event(dev, fdo, timeout_ms, error);
-    if (fdo == DOWN) {
+    if (fdo == UP) {
         g_byte_array_free(priv->calibration_params->fdt_base_down, TRUE);
         priv->calibration_params->fdt_base_down = fpi_goodix_device_generate_fdt_base(event->ftd_data);
     } else {

@@ -58,15 +58,27 @@ static void fpi_goodix_device5395_finger_position_detection(FpDevice *dev, FpiSs
 
 static void fpi_goodix_device5395_wait_for_finger_down(FpDevice *dev, FpiSsm *ssm) {
     GError *error = NULL;
-    if(!fpi_goodix_device_wait_for_finger(dev, 1000000, DOWN, &error)) {
-        FAIL_SSM_AND_RETURN(ssm, error);
+    GByteArray *fdt_base = fpi_goodix_device_wait_for_finger(dev, 1000000, DOWN, &error);
+    if(error != NULL) {
+        FAIL_SSM_AND_RETURN(ssm, error)
     }
+
+    GByteArray *manual_fdt_base = fpi_goodix_device_get_fdt_base_with_tx(dev, FALSE, &error);
+    if (error != NULL) {
+        FAIL_SSM_AND_RETURN(ssm, error)
+    }
+
+    if (fpi_goodix_device_is_fdt_base_valid(dev, fdt_base, manual_fdt_base)) {
+        FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(1, "Temperature event waiting for finger down: %d", WAITING_FINGER_DOWN))
+    }
+
     fpi_ssm_next_state(ssm);
 }
 
 static void fpi_goodix_device5395_wait_for_finger_up(FpDevice *dev, FpiSsm *ssm) {
     GError *error = NULL;
-    if(!fpi_goodix_device_wait_for_finger(dev, 1000000, UP, &error)) {
+    GByteArray *fdt_base = fpi_goodix_device_wait_for_finger(dev, 5000, UP, &error);
+    if(error != NULL) {
         FAIL_SSM_AND_RETURN(ssm, error);
     }
     fpi_ssm_next_state(ssm);
