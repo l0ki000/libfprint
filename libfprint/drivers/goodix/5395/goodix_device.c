@@ -198,20 +198,17 @@ static GByteArray *fpi_goodix_device_execute_fdt_operation(FpDevice *dev, enum F
 static GByteArray *fpi_goodix_device_generate_fdt_up_base(GoodixFtdEvent *event, guint8 delta_down, guint8 delta_up){
     guint16 fdt_val;
     const gint buffer_size = event->ftd_data->len / 2;
-    fp_dbg("Beffer size is %d", buffer_size);
     guint16 *buffer = g_malloc0(buffer_size);
     for (gint i = 0; i < buffer_size; i++) {
         buffer[i] = event->ftd_data->data[2 * i] | event->ftd_data->data[2 * i + 1] << 8;
     }
     
-
     for(gint i = 0; i < buffer_size; i++) {
-        fdt_val = buffer[i] >> 1 + delta_down;
+        fdt_val = (buffer[i] >> 1) + delta_down;
         fdt_val = fdt_val * 0x100 | fdt_val;
         buffer[i] = fdt_val;
     }
 
-    
     for(gint i = 0; i < 0xc; i++){
         if(((event->touch_flag >> i) & 1) == 0) {
             buffer[i] = delta_up * 0x100 | delta_up;
@@ -225,7 +222,6 @@ static GByteArray *fpi_goodix_device_generate_fdt_up_base(GoodixFtdEvent *event,
         encode_buffer[1] = buffer[i] >> 8;
         g_byte_array_append(fdt_base_up_vals_update, encode_buffer, 2);
     }
-    fp_dbg("FDT BASE Length %d", fdt_base_up_vals_update->len);
     g_free(buffer);
     return fdt_base_up_vals_update;
 }
@@ -601,11 +597,12 @@ GByteArray *fpi_goodix_device_get_fdt_base_with_tx(FpDevice *dev, gboolean tx_en
 
     GByteArray *payload = g_byte_array_new();
     guint8 op_code = 0xD;
-    if(!tx_enable){
+    if(!tx_enable) {
         op_code |= 0x80;
     }
     g_byte_array_append(payload, &op_code, 1);
     g_byte_array_append(payload, priv->calibration_params->fdt_base_manual->data, priv->calibration_params->fdt_base_manual->len);
+    fp_dbg("FDT manual %s", fpi_goodix_protocol_data_to_str(priv->calibration_params->fdt_base_manual->data, priv->calibration_params->fdt_base_manual->len));
     GByteArray *fdt_base = fpi_goodix_device_execute_fdt_operation(dev, MANUAL, payload, 500, error);
     if(fdt_base->len == 0) {
         //TODO error
