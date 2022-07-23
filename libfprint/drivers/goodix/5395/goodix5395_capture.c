@@ -91,6 +91,17 @@ static void fpi_goodix_device5395_read_finger(FpDevice *dev, FpiSsm *ssm) {
     fpi_ssm_next_state(ssm);
 }
 
+static void fpi_goodix_device5395_power_off(FpDevice *dev, FpiSsm *ssm) {
+    GError *error = NULL;
+    if (!fpi_goodix_device_set_sleep_mode(dev, &error)) {
+        FAIL_SSM_AND_RETURN(ssm, error)
+    }
+    if (!fpi_goodix_device_ec_control(dev, FALSE, 500, &error)) {
+        FAIL_SSM_AND_RETURN(ssm, error)
+    }
+    fpi_ssm_next_state(ssm);
+}
+
 static void fpi_goodix5395_run_activate_state(FpiSsm *ssm, FpDevice *dev) {
     switch (fpi_ssm_get_cur_state(ssm)){
         case POWER_ON:
@@ -123,6 +134,7 @@ static void fpi_goodix5395_run_activate_state(FpiSsm *ssm, FpDevice *dev) {
             break;
         case AC_SET_SLEEP_MODE: {
             fp_info("AC set sleep mode.");
+            fpi_goodix_device5395_power_off(dev, ssm);
 
         }
             break;
