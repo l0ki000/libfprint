@@ -124,10 +124,9 @@ GByteArray *crypo_utils_AES_128_cbc_decrypt(GByteArray *ciphertext, GByteArray *
 
 
 GByteArray *ctypto_utils_gea_decrypt(gint32 key, GByteArray *encrypted_data){
-    int uVar1, uVar2, uVar3;
-    int index = 0;
+    guint32 uVar1, uVar2, uVar3;
     GByteArray *decrypt_data = g_byte_array_new();
-    for (; index < encrypted_data->len; index = index + 2) {
+    for (int index = 0; index < encrypted_data->len; index += 2) {
         uVar3 = (key >> 1 ^ key) & 0xFFFFFFFF;
         uVar2 = (((((((
                           (key >> 0xF & 0x2000 | key & 0x1000000) >> 1 | key & 0x20000) >>
@@ -156,7 +155,7 @@ GByteArray *ctypto_utils_gea_decrypt(gint32 key, GByteArray *encrypted_data){
         guint16 input_element = encrypted_data->data[index + 1] | encrypted_data->data[index] << 8;
         guint16 stream_val = ((uVar2 >> 8) & 0xFFFF) + (uVar2 & 0xFF | uVar1 & 1) * 0x100;
         guint16 temp = input_element ^ stream_val;
-        temp = GINT16_TO_BE(temp);
+        // temp = GINT16_TO_BE(temp);
         g_byte_array_append(decrypt_data, &(temp), 2);
     }
 

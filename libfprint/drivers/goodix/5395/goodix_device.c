@@ -230,16 +230,15 @@ static GoodixFtdEvent *fpi_goodix_device_wait_fdt_event(FpDevice *dev, enum Fing
     return fpi_goodix_device_get_finger_detection_data(dev, fdo, timeout_ms, error);
 }
 
-static GByteArray *fpi_goodix_protocol_get_image(FpDevice *dev, GByteArray *request, gint timeout_ms, GError **error) {
+static GByteArray *fpi_goodix_device_get_and_decrypt_image(FpDevice *dev, GByteArray *request, gint timeout_ms, GError **error) {
     g_assert(request->len == 4);
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
-    GoodixMessage *message = g_malloc0(sizeof(GoodixMessage));
-    message->category = 0x2;
-    message->command = 0;
-    message->payload = request;
-    fpi_goodix_device_send(dev, message, TRUE, timeout_ms, FALSE, error);
-    message = g_malloc0(sizeof(GoodixMessage));
+    GoodixMessage *message = fpi_goodix_protocol_create_message_byte_array(0x2, 0, request);
+    if (!fpi_goodix_device_send(dev, message, TRUE, timeout_ms, FALSE, error)) {
+        return NULL;
+    }
+    message = NULL;
     if (!fpi_goodix_device_receive(dev, &message, timeout_ms, error) || message->category != 0x2 || message->command != 0) {
 //      TODO  raise Exception("Not an image message")
         return NULL;
@@ -640,7 +639,7 @@ GByteArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gbool
     g_byte_array_append(request, &op_code, 1);
     g_byte_array_append(request, &hv_value, 1);
     g_byte_array_append(request, (guint8 *)&dac, 2);
-    return fpi_goodix_protocol_decode_image(fpi_goodix_protocol_get_image(dev, request, 500, error));
+    return fpi_goodix_protocol_decode_image(fpi_goodix_device_get_and_decrypt_image(dev, request, 500, error));
 }
 
 // TODO GoodixCalibrationParam *fpi_goodix_device_get_calibration_params(FpDevice *dev) {

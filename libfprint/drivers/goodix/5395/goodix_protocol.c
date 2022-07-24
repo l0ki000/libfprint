@@ -204,6 +204,6 @@ void fpi_goodix_protocol_write_pgm(const GByteArray *image, const guint width, c
 
 FpImage *fpi_goodix_protocol_convert_image(const GByteArray *image, const guint width, const guint height) {
     FpImage *img = fp_image_new(width, height);
-
+    memcpy(img->data, image->data, image->len);
     return img;
 }
