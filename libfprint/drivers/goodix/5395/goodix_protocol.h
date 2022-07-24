@@ -20,6 +20,7 @@
 #pragma once
 
 #include <glib.h>
+#include <fp-image.h>
 
 #define GOODIX_EP_OUT_MAX_BUF_SIZE 0x40
 #define GOODIX_EP_IN_MAX_BUF_SIZE 0x40
@@ -55,3 +56,4 @@ gboolean fpi_goodix_protocol_verify_otp_hash(const guint8 *otp, guint otp_length
 void fpi_goodix_protocol_free_message(GoodixMessage *message);
 GByteArray *fpi_goodix_protocol_generate_fdt_base(const GByteArray *fdt_data);
 void fpi_goodix_protocol_write_pgm(const GByteArray *image, const guint width, const guint height, const char *path);
+FpImage *fpi_goodix_protocol_convert_image(const GByteArray *image, const guint width, const guint height);

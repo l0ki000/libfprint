@@ -22,6 +22,7 @@
 #define GOODIX_NULL_CHECKSUM (0x88)
 
 #include "drivers_api.h"
+
 #include "goodix_protocol.h"
 #include <stdio.h>
 
@@ -199,4 +200,10 @@ void fpi_goodix_protocol_write_pgm(const GByteArray *image, const guint width, c
     fwrite(image_to_write->str, sizeof(gchar), image_to_write->len, fp);
     fclose(fp);
 
+}
+
+FpImage *fpi_goodix_protocol_convert_image(const GByteArray *image, const guint width, const guint height) {
+    FpImage *img = fp_image_new(width, height);
+
+    return img;
 }

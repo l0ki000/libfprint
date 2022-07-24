@@ -17,4 +17,4 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 
-void run_capture_state(FpDevice *dev);
+void fpi_device_goodix5395_change_state(FpImageDevice *img_dev, FpiImageDeviceState state);

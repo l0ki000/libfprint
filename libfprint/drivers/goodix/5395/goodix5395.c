@@ -77,6 +77,7 @@ enum Goodix5395InitState {
   ESTABLISH_GTS_CONNECTION,
   UPDATE_ALL_BASE,
   SET_SLEEP_MODE,
+  POWER_ON,
   DEVICE_INIT_NUM_STATES,
 };
 
@@ -342,12 +343,30 @@ static void fpi_goodix5395_set_sleep_mode(FpDevice *dev, FpiSsm *ssm){
     if (error) {
         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(UPDATE_ALL_BASE, "Error set sleep mode", NULL));
     }
-    fpi_ssm_next_state(ssm);
+    fpi_ssm_mark_completed(ssm);
 }
 
 
 static void fpi_goodix_device_gtls_connection(FpDevice *dev, FpiSsm *parent_ssm) {
     fpi_ssm_start_subsm(parent_ssm, fpi_ssm_new(dev, fpi_goodix_device_gtls_connection_handle, ESTABLISH_CONNECTION_STATES_NUM));
+}
+
+static void fpi_goodix5395_ec_control(FpDevice *dev, FpiSsm *ssm, gboolean on, gint timeout_ms){
+    GError *error = NULL;
+    if (!fpi_goodix_device_ec_control(dev, TRUE, 200, &error)){
+        FAIL_SSM_AND_RETURN(ssm, error);
+    }
+    fpi_ssm_next_state(ssm);
+}
+
+static void fpi_goodix_device5395_power_off(FpDevice *dev) {
+    GError *error = NULL;
+    if (!fpi_goodix_device_set_sleep_mode(dev, &error)) {
+        //TODO: handle error
+    }
+    if (!fpi_goodix_device_ec_control(dev, FALSE, 500, &error)) {
+    
+    }
 }
 
 static void fpi_goodix5395_run_init_state(FpiSsm *ssm, FpDevice *dev) {
@@ -386,6 +405,11 @@ static void fpi_goodix5395_run_init_state(FpiSsm *ssm, FpDevice *dev) {
           fp_info("Set sleep mode.");
           fpi_goodix5395_set_sleep_mode(dev, ssm);
           break;
+      case POWER_ON:
+          fp_info("Activating device...");
+          fp_info("Powering on sensor");
+          fpi_goodix5395_ec_control(dev, ssm, TRUE, 200);
+          break;
   }
 }
 
@@ -400,11 +424,11 @@ static void fpi_device_goodix5395_img_open(FpImageDevice *img_dev) {
   GError *error = NULL;
 
   if (fpi_goodix_device_init_device(dev, &error)) {
-    fpi_ssm_start(fpi_ssm_new(dev, fpi_goodix5395_run_init_state, DEVICE_INIT_NUM_STATES), NULL);
-    fpi_image_device_open_complete(img_dev, error);
+    // fpi_ssm_start(fpi_ssm_new(dev, fpi_goodix5395_run_init_state, DEVICE_INIT_NUM_STATES), fpi_goodix5395_open_complete);
+    fpi_image_device_open_complete(img_dev, NULL);
     return;
   }
-  fpi_image_device_open_complete(img_dev, NULL);
+  fpi_image_device_open_complete(img_dev, error);
 }
 
 static void fpi_device_goodix5395_img_close(FpImageDevice *img_dev) {
@@ -421,10 +445,12 @@ static void fpi_device_goodix5395_img_close(FpImageDevice *img_dev) {
 
 static void fpi_device_goodix5395_activate_device(FpImageDevice *img_dev) {
   FpDevice *dev = FP_DEVICE(img_dev);
-  run_capture_state(dev);
+  // run_capture_state(dev);
+  fpi_ssm_start(fpi_ssm_new(dev, fpi_goodix5395_run_init_state, DEVICE_INIT_NUM_STATES), fpi_goodix5395_activate_complete);
 }
 
 static void fpi_device_goodix5395_deactivate(FpImageDevice *img_dev) {
+  fpi_goodix_device5395_power_off(img_dev);
   fpi_image_device_deactivate_complete(img_dev, NULL);
 }
 
@@ -457,6 +483,7 @@ static void fpi_device_goodix5395_class_init(FpiDeviceGoodix5395Class *class) {
     image_device_class->img_close = fpi_device_goodix5395_img_close;
     image_device_class->activate = fpi_device_goodix5395_activate_device;
     image_device_class->deactivate = fpi_device_goodix5395_deactivate;
+    image_device_class->change_state = fpi_device_goodix5395_change_state;
 
     // TODO fpi_device_class_auto_initialize_features(device_class);
     // device_class->features &= ~FP_DEVICE_FEATURE_VERIFY;

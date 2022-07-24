@@ -584,7 +584,7 @@ gboolean fpi_goodix_device_ec_control(FpDevice *dev, gboolean is_enable, gint ti
     gboolean is_ec_control_success = receive_message->payload->data[0] != 1;
 
     if (is_ec_control_success) {
-        *error = FPI_GOODIX_DEVICE_ERROR(1, "EC control failed for state %b", is_enable);
+        *error = FPI_GOODIX_DEVICE_ERROR(1, "EC control failed for state %d", is_enable);
         return FALSE;
     }
 
