@@ -168,8 +168,9 @@ GByteArray *fpi_goodix_gtls_decrypt_sensor_data(GoodixGTLSParams *params, const 
           return NULL;
     }
     fp_dbg("GEA data CRC verified");
-    gint32 gea_key = gea_encrypted_data->data[0] | (guint32)gea_encrypted_data->data[1] << 8 | (guint32)gea_encrypted_data->data[2] << 16 | (guint32)gea_encrypted_data->data[3] << 24;
+    gint32 gea_key = params->symmetric_key->data[0] | (guint32)params->symmetric_key->data[1] << 8 | (guint32)params->symmetric_key->data[2] << 16 | (guint32)params->symmetric_key->data[3] << 24;
     fp_dbg("GEA key: %s", fpi_goodix_protocol_data_to_str(&gea_key, 4));
     fp_dbg("Key is %ld", gea_key);
+
     return ctypto_utils_gea_decrypt(gea_key, gea_encrypted_data);
 }

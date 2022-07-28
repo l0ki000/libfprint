@@ -148,18 +148,21 @@ gboolean fpi_goodix_protocol_verify_otp_hash(const guint8 *otp, guint otp_length
     return received_hash == computed_hash;
 }
 
-GByteArray* fpi_goodix_protocol_decode_image(const GByteArray *image) {
+GArray* fpi_goodix_protocol_decode_image(const GByteArray *image) {
     fp_dbg("Decode image. length: %d", image->len);
     const gint CHUNK_SIZE = 6;
-    GByteArray *decoded_image = g_byte_array_new();
-    guint8 buffer[4] = {};
+    GArray *decoded_image = g_array_new(FALSE, FALSE, sizeof(guint));
+    guint buffer[4] = {};
     for(gint i = 0; i < image->len; i += CHUNK_SIZE) {
         guint8* chunk = image->data + i;
         buffer[0] = ((chunk[0] & 0xf) << 8) + chunk[1];
         buffer[1] = (chunk[3] << 4) + (chunk[0] >> 4);
         buffer[2] = ((chunk[5] & 0xf) << 8) + chunk[2];
         buffer[3] = (chunk[4] << 4) + (chunk[5] >> 4);
-        g_byte_array_append(decoded_image, buffer, sizeof(buffer));
+        g_array_append_val(decoded_image, buffer[0]);
+        g_array_append_val(decoded_image, buffer[1]);
+        g_array_append_val(decoded_image, buffer[2]);
+        g_array_append_val(decoded_image, buffer[3]);
     }
 
     return decoded_image;
@@ -184,7 +187,7 @@ GByteArray *fpi_goodix_protocol_generate_fdt_base(const GByteArray *fdt_data) {
 }
 
 
-void fpi_goodix_protocol_write_pgm(const GByteArray *image, const guint width, const guint height, const char *path) {
+void fpi_goodix_protocol_write_pgm(const GArray *image, const guint width, const guint height, const char *path) {
     fp_dbg("Image %d x %d, length: %d", width, height, image->len);
     GString *image_to_write = g_string_new("");
     g_string_append_printf(image_to_write, "P2\n%d %d\n4095\n\n", width, height);
@@ -192,7 +195,7 @@ void fpi_goodix_protocol_write_pgm(const GByteArray *image, const guint width, c
         if ((i % (width + 8)) == 0) {
             g_string_append_c(image_to_write, '\n');
         }
-        g_string_append_printf(image_to_write, "%d ", image->data[i]);
+        g_string_append_printf(image_to_write, "%d ", g_array_index(image, guint, i));
 
     }
     FILE *fp;
@@ -202,8 +205,11 @@ void fpi_goodix_protocol_write_pgm(const GByteArray *image, const guint width, c
 
 }
 
-FpImage *fpi_goodix_protocol_convert_image(const GByteArray *image, const guint width, const guint height) {
+FpImage *fpi_goodix_protocol_convert_image(const GArray *image, const guint width, const guint height) {
     FpImage *img = fp_image_new(width, height);
-    memcpy(img->data, image->data, image->len);
+    for (guint i = 0; i < image->len; i++) {
+        img->data[i] = g_array_index(image, guint, i);
+    }
+
     return img;
 }

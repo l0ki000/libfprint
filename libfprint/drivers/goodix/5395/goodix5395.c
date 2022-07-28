@@ -305,7 +305,7 @@ static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     GError *error = NULL;
     GByteArray *fdt_data_tx_enabled = fpi_goodix_device_get_fdt_base_with_tx(dev, TRUE, &error);
 
-    GByteArray *image_tx_enabled = fpi_goodix_device_get_image(dev, TRUE, TRUE, 'l', FALSE, FALSE, &error);
+    GArray *image_tx_enabled = fpi_goodix_device_get_image(dev, TRUE, TRUE, 'l', FALSE, FALSE, &error);
 
     GByteArray *fdt_data_tx_disabled = fpi_goodix_device_get_fdt_base_with_tx(dev, FALSE, &error);
 
@@ -314,7 +314,7 @@ static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     if(!fdt_base_valid){
         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(UPDATE_ALL_BASE, "Invalid FDT", NULL));
     }
-    GByteArray *image_tx_disabled = fpi_goodix_device_get_image(dev, FALSE, TRUE, 'l', FALSE, FALSE, &error);
+    GArray *image_tx_disabled = fpi_goodix_device_get_image(dev, FALSE, TRUE, 'l', FALSE, FALSE, &error);
     if (!fpi_goodix_device_validate_base_img(dev, image_tx_enabled, image_tx_disabled)) {
         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(UPDATE_ALL_BASE, "Invalid base image", NULL));
     } else {

@@ -123,40 +123,53 @@ GByteArray *crypo_utils_AES_128_cbc_decrypt(GByteArray *ciphertext, GByteArray *
 }
 
 
-GByteArray *ctypto_utils_gea_decrypt(gint32 key, GByteArray *encrypted_data){
+GByteArray *ctypto_utils_gea_decrypt(guint32 key, GByteArray *encrypted_data){
     guint32 uVar1, uVar2, uVar3;
     GByteArray *decrypt_data = g_byte_array_new();
     for (int index = 0; index < encrypted_data->len; index += 2) {
         uVar3 = (key >> 1 ^ key) & 0xFFFFFFFF;
-        uVar2 = (((((((
-                          (key >> 0xF & 0x2000 | key & 0x1000000) >> 1 | key & 0x20000) >>
-                          2 |
-                      key & 0x1000) >>
-                         3 |
-                     (key >> 7 ^ key) & 0x80000) >>
-                        1 |
-                    (key >> 0xF ^ key) & 0x4000) >>
-                       2 |
-                   key & 0x2000) >>
-                      2 |
-                  uVar3 & 0x40 | key & 0x20) >>
-                     1 |
-                 (key >> 9 ^ key << 8) & 0x800 | (key >> 0x14 ^ key * 2) & 4 |
-                 (key * 8 ^ key >> 0x10) & 0x4000 |
-                 (key >> 2 ^ key >> 0x10) & 0x80 |
-                 (key << 6 ^ key >> 7) & 0x100 | (key & 0x100) << 7);
+        uVar2 = (
+            (
+                (
+                    (
+                        (
+                            (
+                                (
+                                    (key >> 0xF & 0x2000 | key & 0x1000000) >> 1
+                                    | key & 0x20000
+                                )
+                                >> 2
+                                | key & 0x1000
+                            )
+                            >> 3
+                            | (key >> 7 ^ key) & 0x80000
+                        )
+                        >> 1
+                        | (key >> 0xF ^ key) & 0x4000
+                    )
+                    >> 2
+                    | key & 0x2000
+                )
+                >> 2
+                | uVar3 & 0x40
+                | key & 0x20
+            )
+            >> 1
+            | (key >> 9 ^ key << 8) & 0x800
+            | (key >> 0x14 ^ key * 2) & 4
+            | (key * 8 ^ key >> 0x10) & 0x4000
+            | (key >> 2 ^ key >> 0x10) & 0x80
+            | (key << 6 ^ key >> 7) & 0x100
+            | (key & 0x100) << 7);
         uVar2 = uVar2 & 0xFFFFFFFF;
         uVar1 = key & 0xFFFF;
-        key = ((key ^
-                (uVar3 >> 0x14 ^ key) >> 10)
-                   << 0x1F |
-               key >> 1) &
-              0xFFFFFFFF;
-        guint16 input_element = encrypted_data->data[index + 1] | encrypted_data->data[index] << 8;
+        key = ((key ^ (uVar3 >> 0x14 ^ key) >> 10) << 0x1F | key >> 1) & 0xFFFFFFFF;
+        guint16 input_element = encrypted_data->data[index] | encrypted_data->data[index + 1] << 8;
         guint16 stream_val = ((uVar2 >> 8) & 0xFFFF) + (uVar2 & 0xFF | uVar1 & 1) * 0x100;
         guint16 temp = input_element ^ stream_val;
         // temp = GINT16_TO_BE(temp);
-        g_byte_array_append(decrypt_data, &(temp), 2);
+        guint8 buffer[] = {temp & 0xFF, temp >> 8};
+        g_byte_array_append(decrypt_data, buffer, 2);
     }
 
     g_assert(encrypted_data->len == decrypt_data->len);

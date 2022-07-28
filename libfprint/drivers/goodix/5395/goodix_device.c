@@ -609,7 +609,7 @@ GByteArray *fpi_goodix_device_get_fdt_base_with_tx(FpDevice *dev, gboolean tx_en
     return fdt_base;
 }
 
-GByteArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gboolean hv_enable, gchar use_dac, gboolean adjust_dac, gboolean is_finger, GError **error){
+GArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gboolean hv_enable, gchar use_dac, gboolean adjust_dac, gboolean is_finger, GError **error){
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
     guint8 op_code;
@@ -675,7 +675,7 @@ gboolean fpi_goodix_device_is_fdt_base_valid(FpDevice *dev, GByteArray *fdt_data
     return TRUE;
 }
 
-gboolean fpi_goodix_device_validate_base_img(FpDevice *dev, GByteArray *base_image_1, GByteArray *base_image_2) {
+gboolean fpi_goodix_device_validate_base_img(FpDevice *dev, GArray *base_image_1, GArray *base_image_2) {
     //TODO error management
     g_assert(base_image_1->len == SENSOR_WIDTH * SENSOR_HEIGHT);
     g_assert(base_image_2->len == SENSOR_WIDTH * SENSOR_HEIGHT);
@@ -732,7 +732,7 @@ void fpi_device_update_fdt_bases(FpDevice *dev, GByteArray *fdt_base){
     fp_dbg("FDT manual base: %s", fpi_goodix_protocol_data_to_str(priv->calibration_params->fdt_base_manual->data, priv->calibration_params->fdt_base_manual->len));
 }
 
-void fpi_device_update_calibration_image(FpDevice *dev, GByteArray *calib_image) {
+void fpi_device_update_calibration_image(FpDevice *dev, GArray *calib_image) {
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
     if(priv->calibration_params->calib_image != NULL) {
