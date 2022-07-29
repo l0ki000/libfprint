@@ -122,7 +122,7 @@ static gboolean fpi_goodix_device_receive_chunk(FpDevice *dev, GByteArray *data,
 
     if (success) {
         g_byte_array_append(data, transfer->buffer, transfer->actual_length);
-        fp_dbg("Received chunk %s", fpi_goodix_protocol_data_to_str(transfer->buffer, transfer->actual_length));
+        fpi_goodix_protocol_debug_data("Received chunk %s", transfer->buffer, transfer->actual_length);
     }
     fpi_usb_transfer_unref(transfer);
     return success;
@@ -276,7 +276,7 @@ static gboolean fpi_goodix_device_write(FpDevice *dev, guint8 *data, guint32 len
             fpi_usb_transfer_unref(transfer);
             return FALSE;
         }
-        fp_dbg("Chunk sent %s", fpi_goodix_protocol_data_to_str(buffer->data, GOODIX_EP_OUT_MAX_BUF_SIZE));
+        fpi_goodix_protocol_debug_data("Chunk sent %s", buffer->data, GOODIX_EP_OUT_MAX_BUF_SIZE);
         g_byte_array_free(buffer, FALSE);
         fpi_usb_transfer_unref(transfer);
     }
@@ -424,7 +424,7 @@ void fpi_goodix_device_send_mcu(FpDevice *dev, const guint32 data_type, GByteArr
     g_byte_array_append(payload, (guint8 *) &data_type, sizeof(data_type));
     g_byte_array_append(payload, (guint8 *) &t, sizeof(t));
     g_byte_array_append(payload, data->data, data->len);
-    fp_dbg("mcu: %s", fpi_goodix_protocol_data_to_str(payload->data, payload->len));
+    fpi_goodix_protocol_debug_data("mcu: %s", payload->data, payload->len);
     fp_dbg("payload_lenght: %d", payload->len);
     GoodixMessage *message = fpi_goodix_protocol_create_message(0xD, 1, payload->data, payload->len);
     GError *error = NULL;
@@ -445,11 +445,13 @@ GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint32 read_type, GError 
     guint32 payload_size_recv  = (guint32)(msg_payload->data[4] | msg_payload->data[5] << 8 | msg_payload->data[6] << 16 | msg_payload->data[7] << 24);
     
     if (read_type != read_type_recv) {
-        g_set_error(&error, 1, 1, "Wrong read_type, excepted: %02x - received: %s", read_type, fpi_goodix_protocol_data_to_str(message->payload->data, sizeof(read_type)));
+        g_autofree gchar *data_string = fpi_goodix_protocol_data_to_str(message->payload->data, sizeof(read_type));
+        g_set_error(&error, 1, 1, "Wrong read_type, excepted: %02x - received: %s", read_type, data_string);
         return FALSE;
     }
     if (payload_size_recv != msg_payload->len) {
-        g_set_error(&error, 1, 1,"Wrong payload size, excepted: %02x - received: %s", read_type, fpi_goodix_protocol_data_to_str(message->payload->data, sizeof(payload_size_recv)));
+        g_autofree gchar *data_string = fpi_goodix_protocol_data_to_str(message->payload->data, sizeof(payload_size_recv));
+        g_set_error(&error, 1, 1,"Wrong payload size, excepted: %02x - received: %s", read_type, data_string);
         return FALSE;
     }
     g_byte_array_remove_range(msg_payload, 0, 8);
@@ -458,7 +460,6 @@ GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint32 read_type, GError 
 
 gboolean fpi_goodix_device_upload_config(FpDevice *dev, GByteArray *config, gint timeout_ms, GError **error) {
     GoodixMessage *message = fpi_goodix_protocol_create_message_byte_array(0x9, 0, config);
-    fp_dbg("Config after %s data len %d", fpi_goodix_protocol_data_to_str(message->payload->data, message->payload->len), message->payload->len);
     if (!fpi_goodix_device_send(dev, message, TRUE, timeout_ms, FALSE, error)) {
         return FALSE;
     }
@@ -601,7 +602,7 @@ GByteArray *fpi_goodix_device_get_fdt_base_with_tx(FpDevice *dev, gboolean tx_en
     }
     g_byte_array_append(payload, &op_code, 1);
     g_byte_array_append(payload, priv->calibration_params->fdt_base_manual->data, priv->calibration_params->fdt_base_manual->len);
-    fp_dbg("FDT manual %s", fpi_goodix_protocol_data_to_str(priv->calibration_params->fdt_base_manual->data, priv->calibration_params->fdt_base_manual->len));
+    fpi_goodix_protocol_debug_data("FDT manual %s", priv->calibration_params->fdt_base_manual->data, priv->calibration_params->fdt_base_manual->len);
     GByteArray *fdt_base = fpi_goodix_device_execute_fdt_operation(dev, MANUAL, payload, 500, error);
     if(fdt_base->len == 0) {
         //TODO error
@@ -708,7 +709,7 @@ GByteArray *fpi_goodix_device_generate_fdt_base(GByteArray *fdt_data){
         fdt_base_val = (fdt_val & 0xFFFE) * 0x80 | fdt_val >> 1;
         g_byte_array_append(fdt_base, (guint8*)(&fdt_base_val), 2);
     }
-    fp_dbg("GEnerated fdt base %d", fdt_base->len);
+    fp_dbg("Generated fdt base %d", fdt_base->len);
     return fdt_base;
 }
 
@@ -729,7 +730,7 @@ void fpi_device_update_fdt_bases(FpDevice *dev, GByteArray *fdt_base){
     priv->calibration_params->fdt_base_down = g_byte_array_new_take(fdt_base->data, fdt_base->len);
     priv->calibration_params->fdt_base_manual = g_byte_array_new_take(fdt_base->data, fdt_base->len);
     priv->calibration_params->fdt_base_up = g_byte_array_new_take(fdt_base->data, fdt_base->len);
-    fp_dbg("FDT manual base: %s", fpi_goodix_protocol_data_to_str(priv->calibration_params->fdt_base_manual->data, priv->calibration_params->fdt_base_manual->len));
+    fpi_goodix_protocol_debug_data("FDT manual base: %s", priv->calibration_params->fdt_base_manual->data, priv->calibration_params->fdt_base_manual->len);
 }
 
 void fpi_device_update_calibration_image(FpDevice *dev, GArray *calib_image) {
@@ -773,7 +774,7 @@ void fpi_goodix_device_gtls_connection_handle(FpiSsm *ssm, FpDevice* dev) {
         case CLIENT_HELLO: {
             priv->gtls_params = fpi_goodix_device_gtls_init_params();
             priv->gtls_params->client_random = fpi_goodix_gtls_create_hello_message();
-            fp_dbg("client_random: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->client_random->data, priv->gtls_params->client_random->len));
+            fpi_goodix_protocol_debug_data("client_random: %s", priv->gtls_params->client_random->data, priv->gtls_params->client_random->len);
             fp_dbg("client_random_len: %02x", priv->gtls_params->client_random->len);
             fpi_goodix_device_send_mcu(dev, 0xFF01, priv->gtls_params->client_random);
             priv->gtls_params->state = CLIENT_HELLO;
@@ -786,18 +787,20 @@ void fpi_goodix_device_gtls_connection_handle(FpiSsm *ssm, FpDevice* dev) {
                 FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(SERVER_IDENTIFY, "Wrong length, expected 0x40 - received: %02x", recv_mcu_payload->len))
             }
             fpi_goodix_gtls_decode_server_hello(priv->gtls_params, recv_mcu_payload);
-            fp_dbg("server_random: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->server_random->data, priv->gtls_params->server_random->len));
-            fp_dbg("server_identity: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->server_identity->data, priv->gtls_params->server_identity->len));
+            fpi_goodix_protocol_debug_data("server_random: %s", priv->gtls_params->server_random->data, priv->gtls_params->server_random->len);
+            fpi_goodix_protocol_debug_data("server_identity: %s", priv->gtls_params->server_identity->data, priv->gtls_params->server_identity->len);
 
             if(!fpi_goodix_gtls_derive_key(priv->gtls_params)) {
-                fp_dbg("client_identity: %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->client_identity->data, priv->gtls_params->client_identity->len));
+                fpi_goodix_protocol_debug_data("client_identity: %s", priv->gtls_params->client_identity->data, priv->gtls_params->client_identity->len);
+                g_autofree gchar *client_identity_string = fpi_goodix_protocol_data_to_str(priv->gtls_params->client_identity->data, priv->gtls_params->client_identity->len);
+                g_autofree gchar *server_identity_string = fpi_goodix_protocol_data_to_str(priv->gtls_params->server_identity->data, priv->gtls_params->server_identity->len);
                 FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(SERVER_IDENTIFY, "Client and server identity don't match. client identity: %s, server identity: %s ",
-                                                                 fpi_goodix_protocol_data_to_str(priv->gtls_params->client_identity->data, priv->gtls_params->client_identity->len),
-                                                                 fpi_goodix_protocol_data_to_str(priv->gtls_params->server_identity->data, priv->gtls_params->server_identity->len)))
+                                                                 client_identity_string,
+                                                                 server_identity_string))
             }
-            fp_dbg("session_key:    %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->symmetric_key->data, priv->gtls_params->symmetric_key->len));
-            fp_dbg("session_iv:     %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->symmetric_iv->data, priv->gtls_params->symmetric_iv->len));
-            fp_dbg("hmac_key:       %s", fpi_goodix_protocol_data_to_str(priv->gtls_params->hmac_key->data, priv->gtls_params->hmac_key->len));
+            fpi_goodix_protocol_debug_data("session_key:    %s", priv->gtls_params->symmetric_key->data, priv->gtls_params->symmetric_key->len);
+            fpi_goodix_protocol_debug_data("session_iv:     %s", priv->gtls_params->symmetric_iv->data, priv->gtls_params->symmetric_iv->len);
+            fpi_goodix_protocol_debug_data("hmac_key:       %s", priv->gtls_params->hmac_key->data, priv->gtls_params->hmac_key->len);
             fp_dbg("hmac_client_counter_init:    %02x", priv->gtls_params->hmac_client_counter_init);
             fp_dbg("hmac_client_counter_init:    %02x", priv->gtls_params->hmac_server_counter_init);
 
@@ -814,8 +817,8 @@ void fpi_goodix_device_gtls_connection_handle(FpiSsm *ssm, FpDevice* dev) {
         case SERVER_DONE: {
             GByteArray *receive_mcu = fpi_goodix_device_recv_mcu(dev, 0xFF04, error);
             if (receive_mcu->data[0] != 0){
-                FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(SERVER_DONE, "Receive mcu error: mcu %s",
-                                                                 fpi_goodix_protocol_data_to_str(receive_mcu->data, receive_mcu->len)))
+                g_autofree gchar *data_string = fpi_goodix_protocol_data_to_str(receive_mcu->data, receive_mcu->len);
+                FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(SERVER_DONE, "Receive mcu error: mcu %s", data_string))
             }
             priv->gtls_params->hmac_client_counter = priv->gtls_params->hmac_client_counter_init;
             priv->gtls_params->hmac_server_counter = priv->gtls_params->hmac_server_counter_init;

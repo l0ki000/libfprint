@@ -108,7 +108,7 @@ GByteArray *fpi_goodix_gtls_decrypt_sensor_data(GoodixGTLSParams *params, const 
     GByteArray *encrypted_payload = g_byte_array_new_take(encrypted_message->data, encrypted_message->len - 0x20);
 
     GByteArray *payload_hmac = g_byte_array_new_take((encrypted_message->data + (encrypted_message->len - 0x20)), 0x20);
-    fp_dbg("HMAC for encrypted payload: %s", fpi_goodix_protocol_data_to_str(payload_hmac->data, payload_hmac->len));
+    fpi_goodix_protocol_debug_data("HMAC for encrypted payload: %s", payload_hmac->data, payload_hmac->len);
 
     GByteArray *gea_encrypted_data = g_byte_array_new();
     for (size_t block_idx = 0; block_idx < 15; block_idx++) {
@@ -161,7 +161,7 @@ GByteArray *fpi_goodix_gtls_decrypt_sensor_data(GoodixGTLSParams *params, const 
     fp_dbg("msg_gea_crc: %x", msg_gea_crc);
     g_byte_array_remove_range(gea_encrypted_data, gea_encrypted_data->len - 4, 4);
 
-    fp_dbg("GEA data CRC: %s", fpi_goodix_protocol_data_to_str((guint8 *)&msg_gea_crc, 4));
+    fpi_goodix_protocol_debug_data("GEA data CRC: %s", (guint8 *)&msg_gea_crc, 4);
     guint computed_gea_crc = crypto_utils_crc32_mpeg2_calc(gea_encrypted_data->data, gea_encrypted_data->len);
     if(computed_gea_crc != msg_gea_crc) {
           //          raise Exception("CRC check failed")
@@ -169,7 +169,7 @@ GByteArray *fpi_goodix_gtls_decrypt_sensor_data(GoodixGTLSParams *params, const 
     }
     fp_dbg("GEA data CRC verified");
     gint32 gea_key = params->symmetric_key->data[0] | (guint32)params->symmetric_key->data[1] << 8 | (guint32)params->symmetric_key->data[2] << 16 | (guint32)params->symmetric_key->data[3] << 24;
-    fp_dbg("GEA key: %s", fpi_goodix_protocol_data_to_str(&gea_key, 4));
+    fpi_goodix_protocol_debug_data("GEA key: %s", &gea_key, 4);
     fp_dbg("Key is %ld", gea_key);
 
     return ctypto_utils_gea_decrypt(gea_key, gea_encrypted_data);

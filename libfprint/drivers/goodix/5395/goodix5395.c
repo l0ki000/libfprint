@@ -173,13 +173,13 @@ static void fpi_device_goodix5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
         fpi_goodix_protocol_free_message(receive_message);
         FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_SENSOR, "Not a register read message for command %02x", receive_message->command))
     }
-    fp_dbg("OTP: %s", fpi_goodix_protocol_data_to_str(receive_message->payload->data, receive_message->payload->len));
+    fpi_goodix_protocol_debug_data("OTP: %s", receive_message->payload->data, receive_message->payload->len);
 
     guint8 *otp = receive_message->payload->data;
     guint otp_length = receive_message->payload->len;
     if(!fpi_goodix_protocol_verify_otp_hash(otp, otp_length, goodix_5395_otp_hash)) {
-        FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_SENSOR, "OTP hash incorrect %s",
-                                                         fpi_goodix_protocol_data_to_str(otp, otp_length)))
+        g_autofree gchar *data_string = fpi_goodix_protocol_data_to_str(otp, otp_length);
+        FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(CHECK_SENSOR, "OTP hash incorrect %s", data_string))
     }
 
     fpi_goodix_device_set_calibration_params(dev, receive_message->payload);
@@ -222,12 +222,12 @@ static void fpi_device_goodix5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
         }
 
         guint8 *received_psk = receive_message->payload->data + sizeof(GoodixProductionRead);
-        fp_dbg("psk is %s", fpi_goodix_protocol_data_to_str(received_psk, read_structure->payload_size));
+        fpi_goodix_protocol_debug_data("PSK is %s", received_psk, read_structure->payload_size);
 
         
         guint8 *psk = g_malloc0(32);
         GByteArray *calculate_sha256 = crypto_utils_sha256_hash(psk, 32);
-        fp_dbg("Calculated psk: %s", fpi_goodix_protocol_data_to_str(calculate_sha256->data, calculate_sha256->len));
+        fpi_goodix_protocol_debug_data("Calculated psk: %s", calculate_sha256->data, calculate_sha256->len);
         class->is_psk_valid = memcmp(received_psk, calculate_sha256->data, calculate_sha256->len) == 0;
         fpi_ssm_next_state(ssm);
     } else {
