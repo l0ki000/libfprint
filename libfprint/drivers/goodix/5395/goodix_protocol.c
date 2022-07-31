@@ -99,21 +99,17 @@ void fpi_goodix_protocol_encode(GoodixMessage *message, gboolean calc_checksum, 
 
 gboolean fpi_goodix_protocol_decode(guint8 *data, GoodixMessage **message, GError **error) {
     GoodixDevicePack *pack = (GoodixDevicePack *) data;
-    guint data_length = sizeof(GoodixDevicePack) + pack->length - 1;
-    guint8 message_checksum = data[data_length];
+    guint checksum_index = sizeof(GoodixDevicePack) + pack->length - 1;
+    guint8 message_checksum = data[checksum_index];
     if (message_checksum != 0x88) {
-        guint checksum = fpi_goodix_calc_checksum(data, data_length);
+        guint checksum = fpi_goodix_calc_checksum(data, checksum_index);
         if (message_checksum != checksum) {
+            //TODO: Error number is wrong
             g_set_error(error, 1, 1, "Wrong checksum: expected %02x, received %02x", checksum, message_checksum);
             return FALSE;
         }
     }
-
-    *message = g_malloc0(sizeof(GoodixMessage));
-    (*message)->category = pack->cmd >> 4;
-    (*message)->command = (pack->cmd & 0xF) >> 1;
-    (*message)->payload = g_byte_array_new();
-    g_byte_array_append((*message)->payload, data + sizeof(GoodixDevicePack), pack->length - 1);
+    *message = fpi_goodix_protocol_create_message(pack->cmd >> 4, (pack->cmd & 0xF) >> 1, (data + sizeof(GoodixDevicePack)), pack->length - 1);
     return TRUE;
 }
 
@@ -122,7 +118,7 @@ int fpi_goodix_protocol_decode_u32(guint8 *data, uint length) {
 }
 
 
-GoodixMessage *fpi_goodix_protocol_create_message(guint8 category, guint8 command, guint8 *payload, guint8 length) {
+GoodixMessage *fpi_goodix_protocol_create_message(guint8 category, guint8 command, guint8 *payload, guint32 length) {
     GoodixMessage *message = g_malloc0(sizeof(GoodixMessage));
     message->category = category;
     message->command = command;
@@ -159,8 +155,8 @@ gboolean fpi_goodix_protocol_verify_otp_hash(const guint8 *otp, guint otp_length
 GArray* fpi_goodix_protocol_decode_image(const GByteArray *image) {
     fp_dbg("Decode image. length: %d", image->len);
     const gint CHUNK_SIZE = 6;
-    GArray *decoded_image = g_array_new(FALSE, FALSE, sizeof(guint));
-    guint buffer[4] = {};
+    GArray *decoded_image = g_array_new(FALSE, FALSE, sizeof(guint16));
+    guint16 buffer[4] = {};
     for(gint i = 0; i < image->len; i += CHUNK_SIZE) {
         guint8* chunk = image->data + i;
         buffer[0] = ((chunk[0] & 0xf) << 8) + chunk[1];
@@ -203,7 +199,7 @@ void fpi_goodix_protocol_write_pgm(const GArray *image, const guint width, const
         if ((i % (width + 8)) == 0) {
             g_string_append_c(image_to_write, '\n');
         }
-        g_string_append_printf(image_to_write, "%d ", g_array_index(image, guint, i));
+        g_string_append_printf(image_to_write, "%d ", g_array_index(image, guint16, i));
 
     }
     FILE *fp;
@@ -215,8 +211,20 @@ void fpi_goodix_protocol_write_pgm(const GArray *image, const guint width, const
 
 FpImage *fpi_goodix_protocol_convert_image(const GArray *image, const guint width, const guint height) {
     FpImage *img = fp_image_new(width, height);
+    guint16 min = 0xffff, max = 0;
     for (guint i = 0; i < image->len; i++) {
-        img->data[i] = g_array_index(image, guint, i);
+        guint16 value = g_array_index(image, guint16, i);
+        if (value > max) {
+            max = value;
+        } else if (value < min) {
+            min = value;
+        }
+    }
+
+    for (guint i = 0; i < image->len; i++) {
+        guint16 px = g_array_index(image, guint16, i);
+        px = (px - min) * 0xff / (max - min);
+        img->data[i] = px;
     }
 
     return img;

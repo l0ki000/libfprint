@@ -73,6 +73,11 @@ static void fpi_goodix_device5395_read_finger(FpDevice *dev) {
 void fpi_device_goodix5395_change_state(FpImageDevice *img_dev, FpiImageDeviceState state) {
     switch (state) {
         case FPI_IMAGE_DEVICE_STATE_AWAIT_FINGER_ON: {
+            fp_info("Activating device...");
+            fp_info("Powering on sensor");
+            GError *error = NULL;
+            fpi_goodix_device_set_sleep_mode(img_dev, &error);
+            fpi_goodix_device_ec_control(img_dev, TRUE, 200, &error);
             fpi_goodix_device5395_finger_position_detection(img_dev, DOWN, 500);
             fpi_goodix_device5395_wait_for_finger_down(img_dev);
         }
@@ -85,6 +90,14 @@ void fpi_device_goodix5395_change_state(FpImageDevice *img_dev, FpiImageDeviceSt
             fp_dbg("Waiting finger UP");
             fpi_goodix_device5395_finger_position_detection(img_dev, UP, 500);
             fpi_goodix_device5395_wait_for_finger_up(img_dev);
+        }
+            break;
+        case FPI_IMAGE_DEVICE_STATE_IDLE: {
+            GError *error = NULL;
+            fp_dbg("Power off device");
+            if (!fpi_goodix_device_set_sleep_mode(img_dev, &error) && !fpi_goodix_device_ec_control(img_dev, FALSE, 200, &error)) {
+                fp_dbg("Error on power off");
+            }
         }
             break;
     }

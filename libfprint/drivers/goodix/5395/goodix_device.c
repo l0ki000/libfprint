@@ -48,7 +48,6 @@
 
 typedef struct {
     GoodixMessage *message;
-    gboolean ack;
     gboolean reply;
 
     GoodixDeviceReceiveCallback callback;
@@ -65,7 +64,6 @@ G_DEFINE_TYPE_WITH_PRIVATE(FpiGoodixDevice, fpi_goodix_device, FP_TYPE_IMAGE_DEV
 
 static void fpi_goodix_device_init(FpiGoodixDevice *self) {
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
-    priv->ack = FALSE;
     priv->reply = FALSE;
     priv->callback = NULL;
     priv->user_data = NULL;
@@ -122,7 +120,7 @@ static gboolean fpi_goodix_device_receive_chunk(FpDevice *dev, GByteArray *data,
 
     if (success) {
         g_byte_array_append(data, transfer->buffer, transfer->actual_length);
-        fpi_goodix_protocol_debug_data("Received chunk %s", transfer->buffer, transfer->actual_length);
+        // fpi_goodix_protocol_debug_data("Received chunk %s", transfer->buffer, transfer->actual_length);
     }
     fpi_usb_transfer_unref(transfer);
     return success;
@@ -276,7 +274,7 @@ static gboolean fpi_goodix_device_write(FpDevice *dev, guint8 *data, guint32 len
             fpi_usb_transfer_unref(transfer);
             return FALSE;
         }
-        fpi_goodix_protocol_debug_data("Chunk sent %s", buffer->data, GOODIX_EP_OUT_MAX_BUF_SIZE);
+        // fpi_goodix_protocol_debug_data("Chunk sent %s", buffer->data, GOODIX_EP_OUT_MAX_BUF_SIZE);
         g_byte_array_free(buffer, FALSE);
         fpi_usb_transfer_unref(transfer);
     }
@@ -341,19 +339,19 @@ gboolean fpi_goodix_device_receive(FpDevice *dev, GoodixMessage **message, guint
     }
 
     while (buffer->len - 1 < message_length) {
-        GByteArray *chunk = g_byte_array_new();
-        fpi_goodix_device_receive_chunk(dev, chunk, timeout_ms, error);
-        guint8 contd_command_byte = chunk->data[0];
-         if ((contd_command_byte & 0xFE) != command_byte){
+        GByteArray *chunk_buffer = g_byte_array_new();
+        fpi_goodix_device_receive_chunk(dev, chunk_buffer, timeout_ms, error);
+        guint8 contd_command_byte = chunk_buffer->data[0];
+        if ((contd_command_byte & 0xFE) != command_byte){
             g_set_error(error, 1, 1,"Wrong contd_command_byte: expected %02x, received %02x", command_byte, contd_command_byte);
-         }
-        g_byte_array_remove_index(chunk, 0);
-        g_byte_array_append(buffer, chunk->data, chunk->len);
-        g_byte_array_free(chunk, TRUE);
+        }
+        g_byte_array_remove_index(chunk_buffer, 0);
+        g_byte_array_append(buffer, chunk_buffer->data, chunk_buffer->len);
+        g_byte_array_free(chunk_buffer, TRUE);
     }
     gboolean success = fpi_goodix_protocol_decode(buffer->data, message, error);
-    g_byte_array_free(buffer, TRUE);
 
+    g_byte_array_free(buffer, TRUE);
     return success;
 }
 
@@ -367,7 +365,6 @@ gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean 
     fp_dbg("Running command: 0x%02x", message->command);
 
     priv->message = message;
-    priv->ack = TRUE;
     priv->reply = reply;
 
     fpi_goodix_protocol_encode(message, calc_checksum, TRUE, &data, &data_len);
@@ -380,8 +377,8 @@ gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean 
         is_success = fpi_goodix_device_receive(dev, &ackMessage, timeout_ms, error);
         if (is_success) {
             is_success = fpi_goodix_protocol_check_ack(ackMessage, error);
+            fpi_goodix_protocol_free_message(ackMessage);
         }
-        fpi_goodix_protocol_free_message(ackMessage);
     }
 
     return is_success;

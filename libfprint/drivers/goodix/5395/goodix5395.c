@@ -77,7 +77,6 @@ enum Goodix5395InitState {
   ESTABLISH_GTS_CONNECTION,
   UPDATE_ALL_BASE,
   SET_SLEEP_MODE,
-  POWER_ON,
   DEVICE_INIT_NUM_STATES,
 };
 
@@ -359,16 +358,6 @@ static void fpi_goodix5395_ec_control(FpDevice *dev, FpiSsm *ssm, gboolean on, g
     fpi_ssm_next_state(ssm);
 }
 
-static void fpi_goodix_device5395_power_off(FpDevice *dev) {
-    GError *error = NULL;
-    if (!fpi_goodix_device_set_sleep_mode(dev, &error)) {
-        //TODO: handle error
-    }
-    if (!fpi_goodix_device_ec_control(dev, FALSE, 500, &error)) {
-    
-    }
-}
-
 static void fpi_goodix5395_run_init_state(FpiSsm *ssm, FpDevice *dev) {
   switch (fpi_ssm_get_cur_state(ssm)) {
       case INIT_DEVICE:
@@ -405,11 +394,6 @@ static void fpi_goodix5395_run_init_state(FpiSsm *ssm, FpDevice *dev) {
           fp_info("Set sleep mode.");
           fpi_goodix5395_set_sleep_mode(dev, ssm);
           break;
-      case POWER_ON:
-          fp_info("Activating device...");
-          fp_info("Powering on sensor");
-          fpi_goodix5395_ec_control(dev, ssm, TRUE, 200);
-          break;
   }
 }
 
@@ -435,23 +419,17 @@ static void fpi_device_goodix5395_img_close(FpImageDevice *img_dev) {
   FpDevice *dev = FP_DEVICE(img_dev);
   GError *error = NULL;
 
-  if (fpi_goodix_device_deinit_device(dev, &error)) {
-    fpi_image_device_close_complete(img_dev, error);
-    return;
-  }
-
-  fpi_image_device_close_complete(img_dev, NULL);
+  fpi_goodix_device_deinit_device(dev, &error);
+  fpi_image_device_close_complete(img_dev, error);
 }
 
 static void fpi_device_goodix5395_activate_device(FpImageDevice *img_dev) {
   FpDevice *dev = FP_DEVICE(img_dev);
-  // run_capture_state(dev);
   fpi_ssm_start(fpi_ssm_new(dev, fpi_goodix5395_run_init_state, DEVICE_INIT_NUM_STATES), fpi_goodix5395_activate_complete);
 }
 
 static void fpi_device_goodix5395_deactivate(FpImageDevice *img_dev) {
-  fpi_goodix_device5395_power_off(img_dev);
-  fpi_image_device_deactivate_complete(img_dev, NULL);
+    fpi_image_device_deactivate_complete(img_dev, NULL);
 }
 
 // ---- DEV SECTION END ----
