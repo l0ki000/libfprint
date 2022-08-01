@@ -330,10 +330,6 @@ static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     fpi_device_update_calibration_image(dev, image_tx_enabled);
 
     fpi_ssm_next_state(ssm);
-    // TODO
-    // fp_dbg("Decoding and saving calibration image");
-    // tool.write_pgm(calib_params.calib_image, SENSOR_HEIGHT, SENSOR_WIDTH,
-    //                "clear.pgm")
 }
 
 static void fpi_goodix5395_set_sleep_mode(FpDevice *dev, FpiSsm *ssm){

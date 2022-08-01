@@ -209,11 +209,29 @@ void fpi_goodix_protocol_write_pgm(const GArray *image, const guint width, const
 
 }
 
-FpImage *fpi_goodix_protocol_convert_image(const GArray *image, const guint width, const guint height) {
+FpImage *fpi_goodix_protocol_convert_image(const GArray *image, const GArray *background_image, const guint width, const guint height) {
     FpImage *img = fp_image_new(width, height);
     guint16 min = 0xffff, max = 0;
+
+    for(guint i = 0; i < image->len; i++) {
+        guint16 background_value = g_array_index(background_image, guint16, i);
+        g_array_index(image, guint16, i) = background_value + 7095 - g_array_index(image, guint16, i);
+    }
+
+    for(guint i = 0; i < width; i++) {
+        g_array_index(image, guint16, i) = g_array_index(image, guint16, width + i);
+        g_array_index(image, guint16, width * (height - 1)) = g_array_index(image, guint16, width * (height - 2) + i);
+    }
+
+    for(guint i = 0; i < height; i++) {
+        guint row = i * width;
+        g_array_index(image, guint16, row) = g_array_index(image, guint16, row + 1);
+        g_array_index(image, guint16, row + width - 1) = g_array_index(image, guint16, row + width - 2);
+    }
+
     for (guint i = 0; i < image->len; i++) {
         guint16 value = g_array_index(image, guint16, i);
+        
         if (value > max) {
             max = value;
         } else if (value < min) {

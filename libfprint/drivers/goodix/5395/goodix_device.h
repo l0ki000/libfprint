@@ -95,3 +95,4 @@ gboolean fpi_goodix_device_ec_control(FpDevice *dev, gboolean is_enable, gint ti
 void fpi_goodix_device_setup_finger_position_detection(FpDevice *dev, enum FingerDetectionOperation posix, gint timeout_ms, GError **error);
 GByteArray *fpi_goodix_device_wait_for_finger(FpDevice *dev, guint timeout_ms, enum FingerDetectionOperation fdo, GError **error);
 void fpi_goodix_device_gtls_connection_handle(FpiSsm *ssm, FpDevice *dev);
+GArray *fpi_goodix_device_get_background_image(FpDevice *dev);

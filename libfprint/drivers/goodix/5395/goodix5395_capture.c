@@ -66,7 +66,8 @@ static void fpi_goodix_device5395_read_finger(FpDevice *dev) {
     GError *error = NULL;
     GArray *finger_image = fpi_goodix_device_get_image(dev, TRUE, TRUE, 'h', FALSE, TRUE, &error);
     fpi_goodix_protocol_write_pgm(finger_image, SENSOR_WIDTH, SENSOR_HEIGHT, "finger.pgm");
-    FpImage *img = fpi_goodix_protocol_convert_image(finger_image, SENSOR_WIDTH, SENSOR_HEIGHT);
+    GArray *background_image = fpi_goodix_device_get_background_image(dev);
+    FpImage *img = fpi_goodix_protocol_convert_image(finger_image, background_image, SENSOR_WIDTH, SENSOR_HEIGHT);
     fpi_image_device_image_captured(dev, img);
 }
 

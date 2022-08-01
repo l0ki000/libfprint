@@ -761,6 +761,12 @@ GByteArray *fpi_goodix_device_wait_for_finger(FpDevice *dev, guint timeout_ms, e
     return event->ftd_data;
 }
 
+GArray *fpi_goodix_device_get_background_image(FpDevice *dev) {
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    return priv->calibration_params->calib_image;
+}
+
 // ----- GOODIX GTLS CONNECTION ------
 void fpi_goodix_device_gtls_connection_handle(FpiSsm *ssm, FpDevice* dev) {
     GError *error = NULL;
