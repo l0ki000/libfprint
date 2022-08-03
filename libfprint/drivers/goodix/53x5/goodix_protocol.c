@@ -31,12 +31,13 @@
 // ----- METHODS -----
 
 void fpi_goodix_protocol_debug_data(const char *debug_string, guint8 *data, guint32 length) {
-    g_autofree gchar *string = g_malloc((length * 3) + 1);
+    gchar *string = g_malloc((length * 3) + 1);
 
     for (guint32 i = 0; i < length; i++) {
         sprintf(string + i * 3, " %02x", data[i]);
     }
     fp_dbg(debug_string, string);
+    g_free(string);
 }
 
 gchar *fpi_goodix_protocol_data_to_str(guint8 *data, guint32 length) {

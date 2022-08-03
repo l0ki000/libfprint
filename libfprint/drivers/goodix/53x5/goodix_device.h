@@ -1,4 +1,4 @@
-// Goodix 5395 driver for libfprint
+// Goodix 53x5 driver for libfprint
 
 // Copyright (C) 2022 Anton Turko <anton.turko@proton.me>
 // Copyright (C) 2022 Juri Sacchetta <jurisacchetta@gmail.com>
@@ -71,8 +71,7 @@ gboolean fpi_goodix_device_ping(FpDevice *dev, GError **error);
 gboolean fpi_goodix_device_init_device(FpDevice *dev, GError **error);
 gboolean fpi_goodix_device_deinit_device(FpDevice *dev, GError **error);
 
-gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean calc_checksum, guint timeout_ms,
-                            gboolean reply, GError **error);
+gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean calc_checksum, guint timeout_ms, GError **error);
 gboolean fpi_goodix_device_receive(FpDevice *dev, GoodixMessage **message, guint timeout_ms, GError **error);
 gboolean fpi_goodix_device_reset(FpDevice *dev, guint8 reset_type, gboolean irq_status);
 void fpi_goodix_device_send_mcu(FpDevice *dev, const guint32 data_type, GByteArray *data);
@@ -84,7 +83,7 @@ void fpi_goodix_device_set_calibration_params(FpDevice *dev, GByteArray* otp);
 gboolean fpi_goodix_device_set_sleep_mode(FpDevice *dev, GError **error);
 GByteArray *fpi_goodix_device_get_fdt_base_with_tx(FpDevice *dev, gboolean tx_enable, GError **error);
 GArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gboolean hv_enable, gchar use_dac, gboolean adjust_dac, gboolean is_finger, GError **error);
-gboolean fpi_goodix_device_check_receive_data(guint8 category, guint8 command, GoodixMessage *receive_message, GError **error);
+gboolean fpi_goodix_device_is_receive_data_valid(guint8 category, guint8 command, GoodixMessage *receive_message, GError **error);
 void fpi_goodix_device_update_bases(FpDevice *dev, GByteArray *fdt_base);
 gboolean fpi_goodix_device_validate_base_img(FpDevice *dev, GArray *base_image_1, GArray *base_image_2);
 void fpi_device_update_fdt_bases(FpDevice *dev, GByteArray *fdt_base);

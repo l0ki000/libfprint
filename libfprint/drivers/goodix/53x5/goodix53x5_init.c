@@ -1,7 +1,6 @@
-// Goodix 5395 driver for libfprint
+// Goodix 53x5 driver for libfprint
 
 // Copyright (C) 2022 Anton Turko <anton.turko@proton.me>
-// Copyright (C) 2022 Juri Sacchetta <jurisacchetta@gmail.com>
 
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -17,19 +16,50 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-#define FP_COMPONENT "goodix5395"
+#define FP_COMPONENT "goodix53x5_init"
 
 #include <glib.h>
 #include <string.h>
 #include <drivers_api.h>
 
 #include "goodix_device.h"
-#include "goodix5395.h"
 #include "crypto_utils.h"
-#include "goodix5395_capture.h"
+#include "goodix53x5_init.h"
 
 #define FIRMWARE_VERSION_1 "GF5288_HTSEC_APP_10011"
 #define FIRMWARE_VERSION_2 "GF5288_HTSEC_APP_10020"
+
+enum Goodix5395InitState {
+    INIT_DEVICE,
+    CHECK_FIRMWARE,
+    DEVICE_ENABLE,
+    CHECK_SENSOR,
+    CHECK_PSK,
+    WRITE_PSK,
+    ESTABLISH_GTS_CONNECTION,
+    UPDATE_ALL_BASE,
+    SET_SLEEP_MODE,
+    DEVICE_INIT_NUM_STATES,
+};
+
+const guint8 goodix_5395_config[] = {
+        0x40, 0x11, 0x6c, 0x7d, 0x28, 0xa5, 0x28, 0xcd, 0x1c, 0xe9, 0x10, 0xf9, 0x00, 0xf9, 0x00, 0xf9,
+        0x00, 0x04, 0x02, 0x00, 0x00, 0x08, 0x00, 0x11, 0x11, 0xba, 0x00, 0x01, 0x80, 0xca, 0x00, 0x07,
+        0x00, 0x84, 0x00, 0xbe, 0xb2, 0x86, 0x00, 0xc5, 0xb9, 0x88, 0x00, 0xb5, 0xad, 0x8a, 0x00, 0x9d,
+        0x95, 0x8c, 0x00, 0x00, 0xbe, 0x8e, 0x00, 0x00, 0xc5, 0x90, 0x00, 0x00, 0xb5, 0x92, 0x00, 0x00,
+        0x9d, 0x94, 0x00, 0x00, 0xaf, 0x96, 0x00, 0x00, 0xbf, 0x98, 0x00, 0x00, 0xb6, 0x9a, 0x00, 0x00,
+        0xa7, 0x30, 0x00, 0x6c, 0x1c, 0x50, 0x00, 0x01, 0x05, 0xd0, 0x00, 0x00, 0x00, 0x70, 0x00, 0x00,
+        0x00, 0x72, 0x00, 0x78, 0x56, 0x74, 0x00, 0x34, 0x12, 0x26, 0x00, 0x00, 0x12, 0x20, 0x00, 0x10,
+        0x40, 0x12, 0x00, 0x03, 0x04, 0x02, 0x02, 0x16, 0x21, 0x2c, 0x02, 0x0a, 0x03, 0x2a, 0x01, 0x02,
+        0x00, 0x22, 0x00, 0x01, 0x20, 0x24, 0x00, 0x32, 0x00, 0x80, 0x00, 0x05, 0x04, 0x5c, 0x00, 0x00,
+        0x01, 0x56, 0x00, 0x28, 0x20, 0x58, 0x00, 0x01, 0x00, 0x32, 0x00, 0x24, 0x02, 0x82, 0x00, 0x80,
+        0x0c, 0x20, 0x02, 0x88, 0x0d, 0x2a, 0x01, 0x92, 0x07, 0x22, 0x00, 0x01, 0x20, 0x24, 0x00, 0x14,
+        0x00, 0x80, 0x00, 0x05, 0x04, 0x5c, 0x00, 0x00, 0x01, 0x56, 0x00, 0x08, 0x20, 0x58, 0x00, 0x03,
+        0x00, 0x32, 0x00, 0x08, 0x04, 0x82, 0x00, 0x80, 0x0c, 0x20, 0x02, 0x88, 0x0d, 0x2a, 0x01, 0x18,
+        0x04, 0x5c, 0x00, 0x80, 0x00, 0x54, 0x00, 0x00, 0x01, 0x62, 0x00, 0x09, 0x03, 0x64, 0x00, 0x18,
+        0x00, 0x82, 0x00, 0x80, 0x0c, 0x20, 0x02, 0x88, 0x0d, 0x2a, 0x01, 0x18, 0x04, 0x5c, 0x00, 0x80,
+        0x00, 0x52, 0x00, 0x08, 0x00, 0x54, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x61, 0x4f
+};
 
 const guint8 goodix_5395_otp_hash[] = {
         0x00, 0x07, 0x0e, 0x09, 0x1c, 0x1b, 0x12, 0x15, 0x38, 0x3f, 0x36, 0x31, 0x24, 0x23, 0x2a, 0x2d,
@@ -56,36 +86,6 @@ const guint8 goodix5395_psk_white_box[] = {
         0x60, 0x80, 0x9b, 0x17, 0xb5, 0x31, 0x60, 0x37, 0xb6, 0x9b, 0xb2, 0xfa, 0x5d, 0x4c, 0x8a, 0xc3, 0x1e, 0xdb, 0x33, 0x94, 0x04, 0x6e, 0xc0, 0x6b, 0xbd, 0xac, 0xc5, 0x7d, 0xa6, 0xa7, 0x56, 0xc5
 };
 
-
-struct _FpiDeviceGoodix5395 {
-    FpiGoodixDevice parent;
-};
-
-G_DECLARE_FINAL_TYPE(FpiDeviceGoodix5395, fpi_device_goodix5395, FPI, DEVICE_GOODIX5395, FpiGoodixDevice);
-
-G_DEFINE_TYPE(FpiDeviceGoodix5395, fpi_device_goodix5395, FPI_TYPE_GOODIX_DEVICE)
-
-// ---- INIT SECTION START ----
-
-enum Goodix5395InitState {
-  INIT_DEVICE,
-  CHECK_FIRMWARE,
-  DEVICE_ENABLE,
-  CHECK_SENSOR,
-  CHECK_PSK,
-  WRITE_PSK,
-  ESTABLISH_GTS_CONNECTION,
-  UPDATE_ALL_BASE,
-  SET_SLEEP_MODE,
-  DEVICE_INIT_NUM_STATES,
-};
-
-static void fpi_goodix5395_activate_complete(FpiSsm *ssm, FpDevice *dev, GError *error) {
-    FpImageDevice *image_dev = FP_IMAGE_DEVICE(dev);
-    //TODO Check if the called function kill the program in case of error != NULL
-    fpi_image_device_activate_complete(image_dev, error);
-}
-
 static void fpi_device_goodix5395_ping(FpDevice *dev, FpiSsm *ssm) {
     GError *error = NULL;
     if (fpi_goodix_device_ping(dev, &error)) {
@@ -101,7 +101,7 @@ static void fpi_device_goodix5395_device_enable(FpDevice *dev, FpiSsm *ssm) {
     GoodixMessage *enable_message = fpi_goodix_protocol_create_message(0x8, 0x1, payload, 4);
 
     GError *error = NULL;
-    if (!fpi_goodix_device_send(dev, enable_message, TRUE, 500, FALSE, &error)) {
+    if (!fpi_goodix_device_send(dev, enable_message, TRUE, 500, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
 
@@ -130,7 +130,7 @@ static void fpi_device_goodix5395_check_firmware_version(FpDevice *dev, FpiSsm *
     GoodixMessage *message = fpi_goodix_protocol_create_message(0xA, 4, payload, 2);
     GError *error = NULL;
 
-    if(!fpi_goodix_device_send(dev, message, TRUE, 500, FALSE, &error)) {
+    if(!fpi_goodix_device_send(dev, message, TRUE, 500, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
 
@@ -140,7 +140,7 @@ static void fpi_device_goodix5395_check_firmware_version(FpDevice *dev, FpiSsm *
     }
 
     if (receive_message->category == 0xA && receive_message->command == 4) {
-        g_autofree gchar *fw_version = g_strndup(receive_message->payload->data, receive_message->payload->len);
+        g_autofree gchar *fw_version = g_strndup((const char *) receive_message->payload->data, receive_message->payload->len);
         if (g_strcmp0(fw_version, FIRMWARE_VERSION_1) == 0 || g_strcmp0(fw_version, FIRMWARE_VERSION_2) == 0) {
             fpi_ssm_next_state(ssm);
         } else {
@@ -159,7 +159,7 @@ static void fpi_device_goodix5395_check_sensor(FpDevice *dev, FpiSsm *ssm) {
     GoodixMessage *check_message = fpi_goodix_protocol_create_message(0xA, 0x3, payload, 2);
 
     GError *error = NULL;
-    if (!fpi_goodix_device_send(dev, check_message, TRUE, 500, FALSE, &error)) {
+    if (!fpi_goodix_device_send(dev, check_message, TRUE, 500, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
 
@@ -195,7 +195,7 @@ static void fpi_device_goodix5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
     GoodixMessage *check_psk_message = fpi_goodix_protocol_create_message(0xE, 2, payload, 4);
 
     GError *error = NULL;
-    if (!fpi_goodix_device_send(dev, check_psk_message, TRUE, 500, FALSE, &error)) {
+    if (!fpi_goodix_device_send(dev, check_psk_message, TRUE, 500, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
 
@@ -223,7 +223,7 @@ static void fpi_device_goodix5395_check_psk(FpDevice *dev, FpiSsm *ssm) {
         guint8 *received_psk = receive_message->payload->data + sizeof(GoodixProductionRead);
         fpi_goodix_protocol_debug_data("PSK is %s", received_psk, read_structure->payload_size);
 
-        
+
         guint8 *psk = g_malloc0(32);
         GByteArray *calculate_sha256 = crypto_utils_sha256_hash(psk, 32);
         fpi_goodix_protocol_debug_data("Calculated psk: %s", calculate_sha256->data, calculate_sha256->len);
@@ -252,7 +252,7 @@ static void fpi_device_goodix5395_write_psk(FpDevice *dev, FpiSsm *ssm) {
     GoodixMessage *write_psk_message = fpi_goodix_protocol_create_message(0xE, 1, payload, sizeof(payload));
 
     GError *error = NULL;
-    if (!fpi_goodix_device_send(dev, write_psk_message, TRUE, 500, FALSE, &error)) {
+    if (!fpi_goodix_device_send(dev, write_psk_message, TRUE, 500, &error)) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
 
@@ -268,22 +268,8 @@ static void fpi_device_goodix5395_write_psk(FpDevice *dev, FpiSsm *ssm) {
     }
 }
 
-static void fpi_goodix5395_upload_config(FpDevice* dev, FpiSsm* ssm) {
-    GByteArray *config = g_byte_array_new();
-    g_byte_array_append(config, goodix_5395_config, sizeof(goodix_5395_config));
-    fpi_goodix_device_prepare_config(dev, config);
-
-
-    GError *error = NULL;
-    if (!fpi_goodix_device_upload_config(dev, config, 500, &error)) {
-        FAIL_SSM_AND_RETURN(ssm, error)
-    }
-}
-
 static gboolean fpi_goodix5395_is_fdt_base_valid(const GByteArray *fdt_base_1, const GByteArray *fdt_base_2, gint max_delta) {
-    if (fdt_base_1->len != fdt_base_2->len) {
-        return FALSE;;
-    }
+    g_assert(fdt_base_1->len != fdt_base_2->len);
     fp_dbg("Checking FDT data, max delta: %d", max_delta);
     for(gint i = 0; i < fdt_base_1->len; i += 2) {
         guint16 fdt_val_1 = fdt_base_1->data[i] | fdt_base_1->data[i + 1] << 8;
@@ -296,10 +282,21 @@ static gboolean fpi_goodix5395_is_fdt_base_valid(const GByteArray *fdt_base_1, c
     return TRUE;
 }
 
+static void fpi_goodix5395_upload_config(FpDevice* dev, FpiSsm* ssm) {
+    GByteArray *config = g_byte_array_new();
+    g_byte_array_append(config, goodix_5395_config, sizeof(goodix_5395_config));
+    fpi_goodix_device_prepare_config(dev, config);
+
+
+    GError *error = NULL;
+    if (!fpi_goodix_device_upload_config(dev, config, 500, &error)) {
+        FAIL_SSM_AND_RETURN(ssm, error)
+    }
+}
 
 static void fpi_goodix5395_update_all_base(FpDevice* dev, FpiSsm* ssm) {
     //upload config
-    fpi_goodix5395_upload_config(dev, ssm);   
+    fpi_goodix5395_upload_config(dev, ssm);
     fp_dbg("Config is uploaded.");
     GError *error = NULL;
     GByteArray *fdt_data_tx_enabled = fpi_goodix_device_get_fdt_base_with_tx(dev, TRUE, &error);
@@ -346,119 +343,51 @@ static void fpi_goodix_device_gtls_connection(FpDevice *dev, FpiSsm *parent_ssm)
     fpi_ssm_start_subsm(parent_ssm, fpi_ssm_new(dev, fpi_goodix_device_gtls_connection_handle, ESTABLISH_CONNECTION_STATES_NUM));
 }
 
-static void fpi_goodix5395_ec_control(FpDevice *dev, FpiSsm *ssm, gboolean on, gint timeout_ms){
-    GError *error = NULL;
-    if (!fpi_goodix_device_ec_control(dev, TRUE, 200, &error)){
-        FAIL_SSM_AND_RETURN(ssm, error);
+void fpi_goodix5395_run_init_state(FpiSsm *ssm, FpDevice *dev) {
+    switch (fpi_ssm_get_cur_state(ssm)) {
+        case INIT_DEVICE:
+            fpi_device_goodix5395_ping(dev, ssm);
+            break;
+
+        case CHECK_FIRMWARE:
+            fpi_device_goodix5395_check_firmware_version(dev, ssm);
+            break;
+
+        case DEVICE_ENABLE:
+            fpi_device_goodix5395_device_enable(dev, ssm);
+            break;
+
+        case CHECK_SENSOR:
+            fp_info("Checking PSK hash");
+            fpi_device_goodix5395_check_sensor(dev, ssm);
+            break;
+
+        case CHECK_PSK:
+            fpi_device_goodix5395_check_psk(dev, ssm);
+            break;
+
+        case WRITE_PSK:
+            fpi_device_goodix5395_write_psk(dev, ssm);
+            break;
+        case ESTABLISH_GTS_CONNECTION:
+            fpi_goodix_device_gtls_connection(dev, ssm);
+            break;
+        case UPDATE_ALL_BASE:
+            fpi_goodix5395_update_all_base(dev, ssm);
+            break;
+        case SET_SLEEP_MODE:
+            fp_info("Set sleep mode.");
+            fpi_goodix5395_set_sleep_mode(dev, ssm);
+            break;
     }
-    fpi_ssm_next_state(ssm);
 }
 
-static void fpi_goodix5395_run_init_state(FpiSsm *ssm, FpDevice *dev) {
-  switch (fpi_ssm_get_cur_state(ssm)) {
-      case INIT_DEVICE:
-          fpi_device_goodix5395_ping(dev, ssm);
-          break;
-
-      case CHECK_FIRMWARE:
-          fpi_device_goodix5395_check_firmware_version(dev, ssm);
-          break;
-
-      case DEVICE_ENABLE:
-          fpi_device_goodix5395_device_enable(dev, ssm);
-          break;
-
-      case CHECK_SENSOR:
-          fp_info("Checking PSK hash");
-          fpi_device_goodix5395_check_sensor(dev, ssm);
-          break;
-
-      case CHECK_PSK:
-          fpi_device_goodix5395_check_psk(dev, ssm);
-          break;
-
-      case WRITE_PSK:
-          fpi_device_goodix5395_write_psk(dev, ssm);
-          break;
-      case ESTABLISH_GTS_CONNECTION:
-          fpi_goodix_device_gtls_connection(dev, ssm);
-          break;
-      case UPDATE_ALL_BASE:
-          fpi_goodix5395_update_all_base(dev, ssm);
-          break;
-      case SET_SLEEP_MODE:
-          fp_info("Set sleep mode.");
-          fpi_goodix5395_set_sleep_mode(dev, ssm);
-          break;
-  }
+static void fpi_goodix5395_activate_complete(FpiSsm *ssm, FpDevice *dev, GError *error) {
+    FpImageDevice *image_dev = FP_IMAGE_DEVICE(dev);
+    //TODO Check if the called function kill the program in case of error != NULL
+    fpi_image_device_activate_complete(image_dev, error);
 }
 
-// ---- INIT SECTION END ----
-
-// -----------------------------------------------------------------------------
-
-// ---- DEV SECTION START ----
-
-static void fpi_device_goodix5395_img_open(FpImageDevice *img_dev) {
-  FpDevice *dev = FP_DEVICE(img_dev);
-  GError *error = NULL;
-
-  if (fpi_goodix_device_init_device(dev, &error)) {
-    // fpi_ssm_start(fpi_ssm_new(dev, fpi_goodix5395_run_init_state, DEVICE_INIT_NUM_STATES), fpi_goodix5395_open_complete);
-    fpi_image_device_open_complete(img_dev, NULL);
-    return;
-  }
-  fpi_image_device_open_complete(img_dev, error);
-}
-
-static void fpi_device_goodix5395_img_close(FpImageDevice *img_dev) {
-  FpDevice *dev = FP_DEVICE(img_dev);
-  GError *error = NULL;
-
-  fpi_goodix_device_deinit_device(dev, &error);
-  fpi_image_device_close_complete(img_dev, error);
-}
-
-static void fpi_device_goodix5395_activate_device(FpImageDevice *img_dev) {
-  FpDevice *dev = FP_DEVICE(img_dev);
-  fpi_ssm_start(fpi_ssm_new(dev, fpi_goodix5395_run_init_state, DEVICE_INIT_NUM_STATES), fpi_goodix5395_activate_complete);
-}
-
-static void fpi_device_goodix5395_deactivate(FpImageDevice *img_dev) {
-    fpi_image_device_deactivate_complete(img_dev, NULL);
-}
-
-// ---- DEV SECTION END ----
-
-static void fpi_device_goodix5395_init(FpiDeviceGoodix5395 *self) {}
-
-static void fpi_device_goodix5395_class_init(FpiDeviceGoodix5395Class *class) {
-  FpiGoodixDeviceClass *gx_class = FPI_GOODIX_DEVICE_CLASS(class);
-  FpDeviceClass *device_class = FP_DEVICE_CLASS(class);
-  FpImageDeviceClass *image_device_class = FP_IMAGE_DEVICE_CLASS(class);
-
-    gx_class->interface = GOODIX_5395_INTERFACE;
-    gx_class->ep_in = GOODIX_5395_EP_IN;
-    gx_class->ep_out = GOODIX_5395_EP_OUT;
-
-    device_class->id = "goodix5395";
-    device_class->full_name = "Goodix TLS Fingerprint Sensor 5395";
-    device_class->type = FP_DEVICE_TYPE_USB;
-    device_class->id_table = id_table;
-
-    device_class->scan_type = FP_SCAN_TYPE_PRESS;
-
-  // TODO
-    image_device_class->bz3_threshold = 24;
-    image_device_class->img_width = 88;
-    image_device_class->img_height = 108;
-
-    image_device_class->img_open = fpi_device_goodix5395_img_open;
-    image_device_class->img_close = fpi_device_goodix5395_img_close;
-    image_device_class->activate = fpi_device_goodix5395_activate_device;
-    image_device_class->deactivate = fpi_device_goodix5395_deactivate;
-    image_device_class->change_state = fpi_device_goodix5395_change_state;
-
-    // TODO fpi_device_class_auto_initialize_features(device_class);
-    // device_class->features &= ~FP_DEVICE_FEATURE_VERIFY;
+void run_initialize(FpImageDevice *dev) {
+    fpi_ssm_start(fpi_ssm_new(dev, fpi_goodix5395_run_init_state, DEVICE_INIT_NUM_STATES), fpi_goodix5395_activate_complete);
 }

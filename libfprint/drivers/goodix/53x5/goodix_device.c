@@ -47,12 +47,6 @@
 #define SENSOR_HEIGHT 88
 
 typedef struct {
-    GoodixMessage *message;
-    gboolean reply;
-
-    GoodixDeviceReceiveCallback callback;
-    gpointer user_data;
-
     GoodixGTLSParams *gtls_params;
     GByteArray *psk;
     GoodixCalibrationParam *calibration_params;
@@ -64,9 +58,6 @@ G_DEFINE_TYPE_WITH_PRIVATE(FpiGoodixDevice, fpi_goodix_device, FP_TYPE_IMAGE_DEV
 
 static void fpi_goodix_device_init(FpiGoodixDevice *self) {
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
-    priv->reply = FALSE;
-    priv->callback = NULL;
-    priv->user_data = NULL;
     priv->gtls_params = NULL;
     priv->calibration_params = NULL;
 }
@@ -77,16 +68,15 @@ static void fpi_goodix_device_class_init(FpiGoodixDeviceClass *class) {}
 
 // ===================================== START PRIVATE METHOD ===================================== //
 
-// TODO: When a message is sent it's automatically freed, so for now it isn't possible use this function 
-//static gboolean fpi_goodix_device_check_receive_data(GoodixMessage *send_message, GoodixMessage *receive_message, GError **error) {
-//     gboolean is_success_reply = send_message->category == receive_message->category 
-//                                     && send_message->command == receive_message->command;
+gboolean fpi_goodix_device_is_receive_data_valid(guint8 category, guint8 command, GoodixMessage *receive_message, GError **error) {
+     gboolean is_success_reply = category == receive_message->category && command == receive_message->command;
 
-//     if (!is_success_reply) {
-//         *error = FPI_GOODIX_DEVICE_ERROR(1, "Category and command are different for send and receive message. \n Send message category %02x, command %02x. \n Receive message category %02x, command %02x", send_message->category, send_message->command, receive_message->category, receive_message->command);
-//     }
-//     return is_success_reply; 
-// }
+     if (!is_success_reply) {
+         *error = FPI_GOODIX_DEVICE_ERROR(1, "Category and command are different for send and receive message. \n Send message category %02x, command %02x. \n Receive message category %02x, command %02x", category, command, receive_message->category, receive_message->command);
+     }
+     return is_success_reply;
+}
+
 static void fpi_goodix5395_replace_value_in_section(GByteArray *config, guint8 section_num, guint tag, guint16 value) {
     guint8 *section_table = config->data;
     guint section_base = section_table[section_num + 1];
@@ -127,33 +117,36 @@ static gboolean fpi_goodix_device_receive_chunk(FpDevice *dev, GByteArray *data,
 }
 
 static GoodixFtdEvent* fpi_goodix_device_get_finger_detection_data(FpDevice *dev, enum FingerDetectionOperation fdt_op, guint timeout_ms, GError **error){
-    g_autofree GoodixMessage *reply = NULL;
-    if (!fpi_goodix_device_receive(dev, &reply, timeout_ms, error) || reply->category != 0x3 || reply->command != fdt_op) {
+    GoodixMessage *reply_message = NULL;
+    if (!fpi_goodix_device_receive(dev, &reply_message, timeout_ms, error) 
+        || reply_message->category != 0x3 
+        || reply_message->command != fdt_op
+        || reply_message->payload->len != 28) {
         //TODO raise Exception("Not a finger detection reply")
-
-        return FALSE;
-    }
-    if(reply->payload->len != 28) {
-        //TODO raise Exception("Finger detection payload wrong length")
-        return FALSE;
+        if (reply_message != NULL) {
+            fpi_goodix_protocol_free_message(reply_message);
+        }
+        return NULL;
     }
     // TODO check if g_autofree works correctly otherwise create a copy
     // GByteArray *payload = g_byte_array_new();
     // g_byte_array_append(payload, reply->payload->data, reply->payload->len);
     // fpi_goodix_protocol_free_message(reply);
 
-    guint16 irq_status = reply->payload->data[0] | reply->payload->data[1] << 8;
+    guint16 irq_status = reply_message->payload->data[0] | reply_message->payload->data[1] << 8;
     fp_dbg("IRQ status: %#02x", irq_status);
 
-    guint16 touch_flag = reply->payload->data[3] | reply->payload->data[4] << 8;
+    guint16 touch_flag = reply_message->payload->data[3] | reply_message->payload->data[4] << 8;
     fp_dbg("Touch flag: %#02x", touch_flag);
 
-    g_byte_array_remove_range(reply->payload, 0, 4);
+    g_byte_array_remove_range(reply_message->payload, 0, 4);
 
     GoodixFtdEvent *event = g_malloc(sizeof(GoodixFtdEvent));
     event->ftd_data = g_byte_array_new();
-    g_byte_array_append(event->ftd_data, reply->payload->data, reply->payload->len);
+    g_byte_array_append(event->ftd_data, reply_message->payload->data, reply_message->payload->len);
     event->touch_flag = touch_flag;
+
+    fpi_goodix_protocol_free_message(reply_message);
 
     return event;
 }
@@ -183,13 +176,13 @@ static GByteArray *fpi_goodix_device_execute_fdt_operation(FpDevice *dev, enum F
     g_byte_array_append(payload, &one, 1);
     g_byte_array_append(payload, fdt_base->data, fdt_base->len);
     GoodixMessage *message = fpi_goodix_protocol_create_message_byte_array(0x3, fdt_op, payload);
-    if (!fpi_goodix_device_send(dev, message, TRUE, timeout_ms, FALSE, error)) {
+    if (!fpi_goodix_device_send(dev, message, TRUE, timeout_ms, error)) {
         return FALSE;
     }
     if (fdt_op != MANUAL) {
         return NULL;
     }
-    GoodixFtdEvent *fdt_event = fpi_goodix_device_get_finger_detection_data(dev, fdt_op, timeout_ms, error);
+    g_autofree GoodixFtdEvent *fdt_event = fpi_goodix_device_get_finger_detection_data(dev, fdt_op, timeout_ms, error);
     return fdt_event->ftd_data;
 }
 
@@ -233,7 +226,7 @@ static GByteArray *fpi_goodix_device_get_and_decrypt_image(FpDevice *dev, GByteA
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
     GoodixMessage *message = fpi_goodix_protocol_create_message_byte_array(0x2, 0, request);
-    if (!fpi_goodix_device_send(dev, message, TRUE, timeout_ms, FALSE, error)) {
+    if (!fpi_goodix_device_send(dev, message, TRUE, timeout_ms, error)) {
         return NULL;
     }
     message = NULL;
@@ -269,7 +262,6 @@ static gboolean fpi_goodix_device_write(FpDevice *dev, guint8 *data, guint32 len
         }
         fpi_usb_transfer_fill_bulk_full(transfer, class->ep_out, buffer->data, GOODIX_EP_OUT_MAX_BUF_SIZE, NULL);
         if (!fpi_usb_transfer_submit_sync(transfer, timeout_ms, error)) {
-            g_free(data);
             g_byte_array_free(buffer, FALSE);
             fpi_usb_transfer_unref(transfer);
             return FALSE;
@@ -279,7 +271,6 @@ static gboolean fpi_goodix_device_write(FpDevice *dev, guint8 *data, guint32 len
         fpi_usb_transfer_unref(transfer);
     }
 
-    g_free(data);
     return TRUE;
 }
 
@@ -323,7 +314,7 @@ gboolean fpi_goodix_device_deinit_device(FpDevice *dev, GError **error) {
 gboolean fpi_goodix_device_ping(FpDevice *dev, GError **error) {
     fpi_goodix_device_empty_buffer(dev);
     guint8 payload[] = {0, 0};
-    return fpi_goodix_device_send(dev, fpi_goodix_protocol_create_message(0, 0x00, payload, 2), TRUE, 500, FALSE, error);
+    return fpi_goodix_device_send(dev, fpi_goodix_protocol_create_message(0, 0x00, payload, 2), TRUE, 500, error);
 }
 
 gboolean fpi_goodix_device_receive(FpDevice *dev, GoodixMessage **message, guint timeout_ms, GError **error) {
@@ -356,16 +347,13 @@ gboolean fpi_goodix_device_receive(FpDevice *dev, GoodixMessage **message, guint
 }
 
 gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean calc_checksum,
-                            guint timeout_ms, gboolean reply, GError **error) {
+                            guint timeout_ms, GError **error) {
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
     guint8 *data;
     guint32 data_len;
 
     fp_dbg("Running command: 0x%02x", message->command);
-
-    priv->message = message;
-    priv->reply = reply;
 
     fpi_goodix_protocol_encode(message, calc_checksum, TRUE, &data, &data_len);
     fpi_goodix_protocol_free_message(message);
@@ -380,6 +368,8 @@ gboolean fpi_goodix_device_send(FpDevice *dev, GoodixMessage *message, gboolean 
             fpi_goodix_protocol_free_message(ackMessage);
         }
     }
+
+    g_free(data);
 
     return is_success;
 }
@@ -410,7 +400,7 @@ gboolean fpi_goodix_device_reset(FpDevice *dev, guint8 reset_type, gboolean irq_
     GoodixMessage *message = fpi_goodix_protocol_create_message(0xA, 1, message_payload, 2);
 
     GError *error = NULL;
-    return fpi_goodix_device_send(dev, message, TRUE, 500, FALSE, &error);
+    return fpi_goodix_device_send(dev, message, TRUE, 500, &error);
 }
 
 void fpi_goodix_device_send_mcu(FpDevice *dev, const guint32 data_type, GByteArray *data) {
@@ -425,7 +415,7 @@ void fpi_goodix_device_send_mcu(FpDevice *dev, const guint32 data_type, GByteArr
     fp_dbg("payload_lenght: %d", payload->len);
     GoodixMessage *message = fpi_goodix_protocol_create_message(0xD, 1, payload->data, payload->len);
     GError *error = NULL;
-    fpi_goodix_device_send(dev, message, TRUE, 500, FALSE, &error);
+    fpi_goodix_device_send(dev, message, TRUE, 500, &error);
 }
 
 GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint32 read_type, GError *error) {
@@ -457,7 +447,7 @@ GByteArray *fpi_goodix_device_recv_mcu(FpDevice *dev, guint32 read_type, GError 
 
 gboolean fpi_goodix_device_upload_config(FpDevice *dev, GByteArray *config, gint timeout_ms, GError **error) {
     GoodixMessage *message = fpi_goodix_protocol_create_message_byte_array(0x9, 0, config);
-    if (!fpi_goodix_device_send(dev, message, TRUE, timeout_ms, FALSE, error)) {
+    if (!fpi_goodix_device_send(dev, message, TRUE, timeout_ms, error)) {
         return FALSE;
     }
 
@@ -556,7 +546,7 @@ void fpi_goodix_device_set_calibration_params(FpDevice* dev, GByteArray* payload
 gboolean fpi_goodix_device_set_sleep_mode(FpDevice *dev, GError **error) {
     guint8 payload[] = {0x01, 0x00};
     GoodixMessage *message = fpi_goodix_protocol_create_message(0x6, 0, payload, sizeof(payload));
-    return fpi_goodix_device_send(dev, message, TRUE, 200, FALSE, error);
+    return fpi_goodix_device_send(dev, message, TRUE, 200, error);
 }
 
 gboolean fpi_goodix_device_ec_control(FpDevice *dev, gboolean is_enable, gint timeout_ms, GError **error) {
@@ -564,19 +554,14 @@ gboolean fpi_goodix_device_ec_control(FpDevice *dev, gboolean is_enable, gint ti
     guint8 payload[] = {control_val, control_val, 0x00};
 
     GoodixMessage *message = fpi_goodix_protocol_create_message(0xA, 7, payload, sizeof(payload));
-    if(!fpi_goodix_device_send(dev, message, TRUE, timeout_ms, FALSE, error)) {
+    if(!fpi_goodix_device_send(dev, message, TRUE, timeout_ms, error)) {
         return FALSE;
     }
 
     GoodixMessage *receive_message = NULL;
-    if(!fpi_goodix_device_receive(dev, &receive_message, 500, error)) {
+    if(!fpi_goodix_device_receive(dev, &receive_message, 500, error) && !fpi_goodix_device_is_receive_data_valid(0xA, 7, receive_message, error)) {
         return FALSE;
     }
-
-    // TODO See comment above fpi_goodix_device_check_receive_data
-    //if (!fpi_goodix_device_check_receive_data(message, receive_message, error)) {
-    //     return FALSE;
-    // }
 
     gboolean is_ec_control_success = receive_message->payload->data[0] != 1;
 
@@ -751,6 +736,10 @@ GByteArray *fpi_goodix_device_wait_for_finger(FpDevice *dev, guint timeout_ms, e
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
     //TODO check if it's freed also the memory area returned
     g_autofree GoodixFtdEvent *event = fpi_goodix_device_wait_fdt_event(dev, fdo, timeout_ms, error);
+    if (event == NULL) {
+        (*error) = FPI_GOODIX_DEVICE_ERROR(1, "Error get event: %d", fdo);
+        return NULL;
+    }
     if (fdo == UP) {
         g_byte_array_free(priv->calibration_params->fdt_base_down, TRUE);
         priv->calibration_params->fdt_base_down = fpi_goodix_device_generate_fdt_base(event->ftd_data);
@@ -758,6 +747,7 @@ GByteArray *fpi_goodix_device_wait_for_finger(FpDevice *dev, guint timeout_ms, e
         g_byte_array_free(priv->calibration_params->fdt_base_up, TRUE);
         priv->calibration_params->fdt_base_up = fpi_goodix_device_generate_fdt_up_base(event, priv->calibration_params->delta_down, priv->calibration_params->delta_up);   
     }
+
     return event->ftd_data;
 }
 

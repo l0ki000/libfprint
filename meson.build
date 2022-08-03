@@ -124,7 +124,7 @@ default_drivers = [
     'upekts',
     'goodixmoc',
     'goodixtls511',
-    'goodix5395',
+    'goodix53x5',
     'nb1010',
 
     # SPI
@@ -159,7 +159,7 @@ driver_helper_mapping = {
     'uru4000' : [ 'nss' ],
     'elanspi' : [ 'udev' ],
     'goodixtls511' : [ 'goodixtls' ],
-    'goodix5395' : [ 'goodixtls', 'goodix_device' ],
+    'goodix53x5' : [ 'goodix_device' ],
     'virtual_image'          : [ 'virtual' ],
     'virtual_device'         : [ 'virtual' ],
     'virtual_device_storage' : [ 'virtual' ],
