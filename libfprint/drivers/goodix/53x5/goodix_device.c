@@ -50,6 +50,7 @@ typedef struct {
     GoodixGTLSParams *gtls_params;
     GByteArray *psk;
     GoodixCalibrationParam *calibration_params;
+    GList *finger_images;
 } FpiGoodixDevicePrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE(FpiGoodixDevice, fpi_goodix_device, FP_TYPE_IMAGE_DEVICE);
@@ -60,6 +61,7 @@ static void fpi_goodix_device_init(FpiGoodixDevice *self) {
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
     priv->gtls_params = NULL;
     priv->calibration_params = NULL;
+    priv->finger_images = NULL;
 }
 
 static void fpi_goodix_device_class_init(FpiGoodixDeviceClass *class) {}
@@ -631,16 +633,6 @@ GArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gboolean 
 //     return priv->calibration_params;
 // }
 
-void fpi_goodix_device_update_bases(FpDevice *dev, GByteArray *fdt_base) {
-    //TODO error management
-    g_assert(fdt_base->len == FDT_BASE_LEN);
-    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
-    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
-    priv->calibration_params->fdt_base_down = fdt_base;
-    priv->calibration_params->fdt_base_up = fdt_base;
-    priv->calibration_params->fdt_base_manual = fdt_base;
-}
-
 gboolean fpi_goodix_device_is_fdt_base_valid(FpDevice *dev, GByteArray *fdt_data_1, GByteArray *fdt_data_2) {
     g_assert(fdt_data_1->len == fdt_data_2->len);
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
@@ -709,9 +701,12 @@ void fpi_device_update_fdt_bases(FpDevice *dev, GByteArray *fdt_base){
     if(priv->calibration_params->fdt_base_up != NULL) {
         g_byte_array_free(priv->calibration_params->fdt_base_up, TRUE);
     }
-    priv->calibration_params->fdt_base_down = g_byte_array_new_take(fdt_base->data, fdt_base->len);
-    priv->calibration_params->fdt_base_manual = g_byte_array_new_take(fdt_base->data, fdt_base->len);
-    priv->calibration_params->fdt_base_up = g_byte_array_new_take(fdt_base->data, fdt_base->len);
+    priv->calibration_params->fdt_base_down = g_byte_array_new();
+    g_byte_array_append(priv->calibration_params->fdt_base_down, fdt_base->data, fdt_base->len);
+    priv->calibration_params->fdt_base_manual = g_byte_array_new();
+    g_byte_array_append(priv->calibration_params->fdt_base_manual, fdt_base->data, fdt_base->len);
+    priv->calibration_params->fdt_base_up = g_byte_array_new();
+    g_byte_array_append(priv->calibration_params->fdt_base_up, fdt_base->data, fdt_base->len);
     fpi_goodix_protocol_debug_data("FDT manual base: %s", priv->calibration_params->fdt_base_manual->data, priv->calibration_params->fdt_base_manual->len);
 }
 
@@ -823,3 +818,26 @@ void fpi_goodix_device_gtls_connection_handle(FpiSsm *ssm, FpDevice* dev) {
     }
 }
 // ----- GOODIX GTLS CONNECTION END ------
+
+void fpi_goodix_device_add_image(FpDevice *dev, GArray *image) {
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    priv->finger_images = g_list_append(priv->finger_images, image);
+}
+
+GList *fpi_goodix_device_get_finger_images(FpDevice *dev) {
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    return priv->finger_images;
+}
+
+static void fpi_goodix_device_free_list(gpointer element, gpointer user_data) {
+    g_array_free(element, TRUE);
+}
+
+void fpi_goodix_device_clear_finger_images(FpDevice *dev) {
+    FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
+    FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
+    g_list_foreach(priv->finger_images, fpi_goodix_device_free_list, FALSE);
+    priv->finger_images = NULL;
+}

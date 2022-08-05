@@ -48,11 +48,12 @@ static void fpi_device_goodix5395_img_open(FpImageDevice *img_dev) {
 }
 
 static void fpi_device_goodix5395_img_close(FpImageDevice *img_dev) {
-  FpDevice *dev = FP_DEVICE(img_dev);
-  GError *error = NULL;
+    fp_dbg("Close image device");
+    FpDevice *dev = FP_DEVICE(img_dev);
+    GError *error = NULL;
 
-  fpi_goodix_device_deinit_device(dev, &error);
-  fpi_image_device_close_complete(img_dev, error);
+    fpi_goodix_device_deinit_device(dev, &error);
+    fpi_image_device_close_complete(img_dev, error);
 }
 
 static void fpi_device_goodix5395_activate_device(FpImageDevice *img_dev) {

@@ -24,7 +24,8 @@
 
 #define GOODIX_DEVICE_ERROR_DOMAIN 1
 #define FAIL_SSM_AND_RETURN(ssm, error) fpi_ssm_mark_failed(ssm, error); return;
-#define FPI_GOODIX_DEVICE_ERROR(code, format, ...)  g_error_new(GOODIX_DEVICE_ERROR_DOMAIN, code, format, __VA_ARGS__)
+#define FPI_GOODIX_DEVICE_ERROR(code, format, ...)  g_error_new(GOODIX_DEVICE_ERROR_DOMAIN, code, format)
+#define FPI_GOODIX_DEVICE_ERROR_WITH_PARAMS(code, format, ...)  g_error_new(GOODIX_DEVICE_ERROR_DOMAIN, code, format, __VA_ARGS__)
 
 G_DECLARE_DERIVABLE_TYPE(FpiGoodixDevice, fpi_goodix_device, FPI, GOODIX_DEVICE, FpImageDevice);
 
@@ -84,7 +85,6 @@ gboolean fpi_goodix_device_set_sleep_mode(FpDevice *dev, GError **error);
 GByteArray *fpi_goodix_device_get_fdt_base_with_tx(FpDevice *dev, gboolean tx_enable, GError **error);
 GArray *fpi_goodix_device_get_image(FpDevice *dev, gboolean tx_enable, gboolean hv_enable, gchar use_dac, gboolean adjust_dac, gboolean is_finger, GError **error);
 gboolean fpi_goodix_device_is_receive_data_valid(guint8 category, guint8 command, GoodixMessage *receive_message, GError **error);
-void fpi_goodix_device_update_bases(FpDevice *dev, GByteArray *fdt_base);
 gboolean fpi_goodix_device_validate_base_img(FpDevice *dev, GArray *base_image_1, GArray *base_image_2);
 void fpi_device_update_fdt_bases(FpDevice *dev, GByteArray *fdt_base);
 gboolean fpi_goodix_device_is_fdt_base_valid(FpDevice *dev, GByteArray *fdt_data_1, GByteArray *fdt_data_2);
@@ -95,3 +95,6 @@ void fpi_goodix_device_setup_finger_position_detection(FpDevice *dev, enum Finge
 GByteArray *fpi_goodix_device_wait_for_finger(FpDevice *dev, guint timeout_ms, enum FingerDetectionOperation fdo, GError **error);
 void fpi_goodix_device_gtls_connection_handle(FpiSsm *ssm, FpDevice *dev);
 GArray *fpi_goodix_device_get_background_image(FpDevice *dev);
+void fpi_goodix_device_add_image(FpDevice *dev, GArray *image);
+GList *fpi_goodix_device_get_finger_images(FpDevice *dev);
+void fpi_goodix_device_clear_finger_images(FpDevice *dev);
