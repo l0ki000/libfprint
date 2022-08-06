@@ -96,5 +96,5 @@ GByteArray *fpi_goodix_device_wait_for_finger(FpDevice *dev, guint timeout_ms, e
 void fpi_goodix_device_gtls_connection_handle(FpiSsm *ssm, FpDevice *dev);
 GArray *fpi_goodix_device_get_background_image(FpDevice *dev);
 void fpi_goodix_device_add_image(FpDevice *dev, GArray *image);
-GList *fpi_goodix_device_get_finger_images(FpDevice *dev);
+GSList *fpi_goodix_device_get_finger_images(FpDevice *dev);
 void fpi_goodix_device_clear_finger_images(FpDevice *dev);

@@ -50,7 +50,7 @@ typedef struct {
     GoodixGTLSParams *gtls_params;
     GByteArray *psk;
     GoodixCalibrationParam *calibration_params;
-    GList *finger_images;
+    GSList *finger_images;
 } FpiGoodixDevicePrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE(FpiGoodixDevice, fpi_goodix_device, FP_TYPE_IMAGE_DEVICE);
@@ -644,8 +644,10 @@ gboolean fpi_goodix_device_is_fdt_base_valid(FpDevice *dev, GByteArray *fdt_data
         fdt_val_1 = fdt_data_1->data[i] | fdt_data_1->data[i + 1] << 8;
         fdt_val_2 = fdt_data_2->data[i] | fdt_data_2->data[i + 1] << 8;
 
-        delta = abs((fdt_val_2 >> 1) - (fdt_val_1 >> 1));
-        if (delta > priv->calibration_params->delta_fdt) return FALSE;
+        delta = (gint16) abs((fdt_val_2 >> 1) - (fdt_val_1 >> 1));
+        if (delta > priv->calibration_params->delta_fdt) {
+            return FALSE;
+        }
     }
     return TRUE;
 }
@@ -714,7 +716,7 @@ void fpi_device_update_calibration_image(FpDevice *dev, GArray *calib_image) {
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
     if(priv->calibration_params->calib_image != NULL) {
-        g_byte_array_free(priv->calibration_params->calib_image, TRUE);
+        g_array_free(priv->calibration_params->calib_image, TRUE);
     }
     priv->calibration_params->calib_image = calib_image;
 }
@@ -822,10 +824,10 @@ void fpi_goodix_device_gtls_connection_handle(FpiSsm *ssm, FpDevice* dev) {
 void fpi_goodix_device_add_image(FpDevice *dev, GArray *image) {
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
-    priv->finger_images = g_list_append(priv->finger_images, image);
+    priv->finger_images = g_slist_append(priv->finger_images, image);
 }
 
-GList *fpi_goodix_device_get_finger_images(FpDevice *dev) {
+GSList *fpi_goodix_device_get_finger_images(FpDevice *dev) {
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
     return priv->finger_images;
@@ -838,6 +840,6 @@ static void fpi_goodix_device_free_list(gpointer element, gpointer user_data) {
 void fpi_goodix_device_clear_finger_images(FpDevice *dev) {
     FpiGoodixDevice *self = FPI_GOODIX_DEVICE(dev);
     FpiGoodixDevicePrivate *priv = fpi_goodix_device_get_instance_private(self);
-    g_list_foreach(priv->finger_images, fpi_goodix_device_free_list, FALSE);
+    g_slist_foreach(priv->finger_images, fpi_goodix_device_free_list, FALSE);
     priv->finger_images = NULL;
 }

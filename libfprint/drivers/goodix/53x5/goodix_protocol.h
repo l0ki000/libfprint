@@ -57,4 +57,4 @@ gboolean fpi_goodix_protocol_verify_otp_hash(const guint8 *otp, guint otp_length
 void fpi_goodix_protocol_free_message(GoodixMessage *message);
 GByteArray *fpi_goodix_protocol_generate_fdt_base(const GByteArray *fdt_data);
 void fpi_goodix_protocol_write_pgm(const GArray *image, const guint width, const guint height, const char *path);
-FpImage *fpi_goodix_protocol_convert_image(const GArray *image, const GArray *calib_image, const guint width, const guint height);
+FpImage *fpi_goodix_protocol_convert_image(const GSList *raw_images, const GArray *calib_image, const guint width, const guint height);

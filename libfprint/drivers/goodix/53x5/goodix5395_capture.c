@@ -66,9 +66,9 @@ static void fpi_goodix_device5395_wait_for_finger_down(FpDevice *dev, FpiSsm *ss
         FAIL_SSM_AND_RETURN(ssm, error)
     }
 
-    if (fpi_goodix_device_is_fdt_base_valid(dev, fdt_base, manual_fdt_base)) {
-        FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(1, "FDT base is not valid."))
-    }
+//    if (fpi_goodix_device_is_fdt_base_valid(dev, fdt_base, manual_fdt_base)) {
+//        FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(1, "FDT base is not valid."))
+//    }
 
     fpi_goodix_device53x5_report_finger(dev, TRUE);
     fpi_ssm_next_state(ssm);
@@ -84,10 +84,11 @@ static void fpi_goodix_device5395_wait_for_finger_up(FpDevice *dev, FpiSsm *ssm)
 }
 
 static void fpi_goodix_device5395_read_finger(FpDevice *dev, FpiSsm *ssm) {
-    FpImageDevice *img_dev = FP_IMAGE_DEVICE(dev);
     GError *error = NULL;
-    GArray *finger_image = fpi_goodix_device_get_image(dev, TRUE, TRUE, 'h', FALSE, TRUE, &error);
-    fpi_goodix_device_add_image(dev, finger_image);
+    for (int i = 0; i < 1; i++) {
+        GArray *finger_image = fpi_goodix_device_get_image(dev, TRUE, TRUE, 'h', FALSE, TRUE, &error);
+        fpi_goodix_device_add_image(dev, finger_image);
+    }
 //    g_array_free(finger_image, TRUE);
     fpi_ssm_next_state(ssm);
 }
@@ -152,8 +153,7 @@ static void goodix5395_capture_complete(FpiSsm *ssm, FpDevice *dev, GError *erro
         fpi_image_device_session_error(img_dev, error);
     } else {
         GArray *background_image = fpi_goodix_device_get_background_image(dev);
-        GArray *finger_image = g_list_first(fpi_goodix_device_get_finger_images(dev))->data;
-        FpImage *img = fpi_goodix_protocol_convert_image(finger_image, background_image, SENSOR_WIDTH, SENSOR_HEIGHT);
+        FpImage *img = fpi_goodix_protocol_convert_image(fpi_goodix_device_get_finger_images(dev), background_image, SENSOR_WIDTH, SENSOR_HEIGHT);
         fpi_image_device_image_captured(img_dev, img);
         fpi_goodix_device53x5_report_finger(dev, FALSE);
         fpi_goodix_device_clear_finger_images(dev);

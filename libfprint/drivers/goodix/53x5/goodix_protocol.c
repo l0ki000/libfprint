@@ -26,7 +26,21 @@
 #include "goodix_protocol.h"
 #include <stdio.h>
 
-//G_DEFINE_TYPE(FpiGoodixProtocol, fpi_goodix_protocol, g_object_get_type());
+static unsigned char
+fpi_goodix_device_get_pixel (struct fpi_frame_asmbl_ctx *ctx,
+                struct fpi_frame *frame, unsigned int x,
+                unsigned int y)
+{
+    return frame->data[x + y * ctx->frame_width];
+}
+
+
+static struct fpi_frame_asmbl_ctx assembling_ctx = {
+    .frame_width = 0,
+    .frame_height = 0,
+    .image_width = 0,
+    .get_pixel = fpi_goodix_device_get_pixel,
+};
 
 // ----- METHODS -----
 
@@ -210,9 +224,60 @@ void fpi_goodix_protocol_write_pgm(const GArray *image, const guint width, const
 
 }
 
-FpImage *fpi_goodix_protocol_convert_image(const GArray *image, const GArray *background_image, const guint width, const guint height) {
-    FpImage *img = fp_image_new(width, height);
-    guint16 min = 0xffff, max = 0;
+static int
+cmp_short (const void *a, const void *b)
+{
+    return (int) (*(short *) a - *(short *) b);
+}
+
+static void
+fpi_goodix_device_process_frame_thirds (const GArray *raw_frame,
+                           GSList       ** frames)
+{
+    G_DEBUG_HERE ();
+
+    unsigned int frame_size =
+            assembling_ctx.frame_width * assembling_ctx.frame_height;
+    struct fpi_frame *frame =
+            g_malloc (frame_size + sizeof (struct fpi_frame));
+
+    unsigned short lvl0, lvl1, lvl2, lvl3;
+    unsigned short *sorted = g_malloc (frame_size * sizeof (short));
+
+    for(int i = 0; i < raw_frame->len; i++) {
+        guint16 value = g_array_index(raw_frame, guint16, i);
+        sorted[i] = value;
+    }
+
+//    memcpy (sorted, raw_frame, frame_size * sizeof (short));
+    qsort (sorted, frame_size, sizeof (short), cmp_short);
+    lvl0 = sorted[0];
+    lvl1 = sorted[frame_size * 3 / 10];
+    lvl2 = sorted[frame_size * 65 / 100];
+    lvl3 = sorted[frame_size - 1];
+    g_free (sorted);
+
+    unsigned short px;
+
+    for (int i = 0; i < frame_size; i++)
+    {
+        px = g_array_index(raw_frame, guint16, i);
+        if (lvl0 <= px && px < lvl1)
+            px = (px - lvl0) * 99 / (lvl1 - lvl0);
+        else if (lvl1 <= px && px < lvl2)
+            px = 99 + ((px - lvl1) * 56 / (lvl2 - lvl1));
+        else                      // (lvl2 <= px && px <= lvl3)
+            px = 155 + ((px - lvl2) * 100 / (lvl3 - lvl2));
+        frame->data[i] = (unsigned char) px;
+    }
+
+    *frames = g_slist_prepend (*frames, frame);
+}
+
+static void fpi_goodix_protocol_substruct_background(GArray *image, GArray *background_image) {
+
+    guint width = assembling_ctx.frame_width;
+    guint height = assembling_ctx.frame_height;
 
     for(guint i = 0; i < image->len; i++) {
         guint16 background_value = g_array_index(background_image, guint16, i);
@@ -229,10 +294,18 @@ FpImage *fpi_goodix_protocol_convert_image(const GArray *image, const GArray *ba
         g_array_index(image, guint16, row) = g_array_index(image, guint16, row + 1);
         g_array_index(image, guint16, row + width - 1) = g_array_index(image, guint16, row + width - 2);
     }
+}
+
+static void fpi_goodix_protocol_linear_mapping(GArray *image, GSList **frames) {
+    //    FpImage *img = fp_image_new(width, height);
+    guint16 min = 0xffff, max = 0;
+
+    struct fpi_frame *frame =
+            g_malloc (assembling_ctx.frame_width * assembling_ctx.frame_height + sizeof (struct fpi_frame));
 
     for (guint i = 0; i < image->len; i++) {
         guint16 value = g_array_index(image, guint16, i);
-        
+
         if (value > max) {
             max = value;
         } else if (value < min) {
@@ -243,8 +316,28 @@ FpImage *fpi_goodix_protocol_convert_image(const GArray *image, const GArray *ba
     for (guint i = 0; i < image->len; i++) {
         guint16 px = g_array_index(image, guint16, i);
         px = (px - min) * 0xff / (max - min);
-        img->data[i] = px;
+        frame->data[i] = px;
     }
+
+    *frames = g_slist_prepend (*frames, frame);
+}
+
+FpImage *fpi_goodix_protocol_convert_image(const GSList *raw_images, const GArray *background_image, const guint width, const guint height) {
+    GSList *frames = NULL;
+    assembling_ctx.frame_width = width;
+    assembling_ctx.frame_height = height;
+    assembling_ctx.image_width = width;// width * 3 / 2;
+
+
+    g_slist_foreach(raw_images, (GFunc) fpi_goodix_protocol_substruct_background, background_image);
+//    g_slist_foreach(raw_images, (GFunc) fpi_goodix_device_process_frame_thirds, &frames);
+    g_slist_foreach(raw_images, (GFunc) fpi_goodix_protocol_linear_mapping, &frames);
+
+//    fpi_do_movement_estimation (&assembling_ctx, frames);
+    FpImage *img = fpi_assemble_frames(&assembling_ctx, frames);
+    img->flags |= FPI_IMAGE_PARTIAL;
+
+    g_slist_free_full(frames, g_free);
 
     return img;
 }
