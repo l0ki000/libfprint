@@ -27,6 +27,8 @@
 #define SENSOR_WIDTH 108
 #define SENSOR_HEIGHT 88
 
+#define CAPTURE_IMAGE_COUNT 1
+
 enum Goodix5395CaptureState {
     POWER_ON,
     FINGER_DOWN_DETECTION,
@@ -66,9 +68,9 @@ static void fpi_goodix_device5395_wait_for_finger_down(FpDevice *dev, FpiSsm *ss
         FAIL_SSM_AND_RETURN(ssm, error)
     }
 
-//    if (fpi_goodix_device_is_fdt_base_valid(dev, fdt_base, manual_fdt_base)) {
-//        FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(1, "FDT base is not valid."))
-//    }
+   if (fpi_goodix_device_is_fdt_base_valid(dev, fdt_base, manual_fdt_base)) {
+       FAIL_SSM_AND_RETURN(ssm, FPI_GOODIX_DEVICE_ERROR(1, "FDT base is not valid."))
+   }
 
     fpi_goodix_device53x5_report_finger(dev, TRUE);
     fpi_ssm_next_state(ssm);
@@ -76,7 +78,7 @@ static void fpi_goodix_device5395_wait_for_finger_down(FpDevice *dev, FpiSsm *ss
 
 static void fpi_goodix_device5395_wait_for_finger_up(FpDevice *dev, FpiSsm *ssm) {
     GError *error = NULL;
-    fpi_goodix_device_wait_for_finger(dev, 100000, UP, &error);
+    fpi_goodix_device_wait_for_finger(dev, 5000, UP, &error);
     if(error != NULL) {
         FAIL_SSM_AND_RETURN(ssm, error)
     }
@@ -85,7 +87,7 @@ static void fpi_goodix_device5395_wait_for_finger_up(FpDevice *dev, FpiSsm *ssm)
 
 static void fpi_goodix_device5395_read_finger(FpDevice *dev, FpiSsm *ssm) {
     GError *error = NULL;
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < CAPTURE_IMAGE_COUNT; i++) {
         GArray *finger_image = fpi_goodix_device_get_image(dev, TRUE, TRUE, 'h', FALSE, TRUE, &error);
         fpi_goodix_device_add_image(dev, finger_image);
     }
