@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "sigfm/sigfm.hpp"
 #define FP_COMPONENT "print"
 
 #include "fp-print-private.h"
@@ -61,6 +62,7 @@ enum {
   /* Private property*/
   PROP_FPI_TYPE,
   PROP_FPI_DATA,
+  PROP_FPI_PRINTS,
   N_PROPS
 };
 
@@ -133,6 +135,10 @@ fp_print_get_property (GObject    *object,
       g_value_set_variant (value, self->data);
       break;
 
+    case PROP_FPI_PRINTS:
+      g_value_set_pointer (value, self->prints);
+      break;
+
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
     }
@@ -186,6 +192,11 @@ fp_print_set_property (GObject      *object,
     case PROP_FPI_DATA:
       g_clear_pointer (&self->data, g_variant_unref);
       self->data = g_value_dup_variant (value);
+      break;
+
+    case PROP_FPI_PRINTS:
+      g_clear_pointer (&self->prints, g_ptr_array_unref);
+      self->prints = g_value_get_pointer (value);
       break;
 
     default:
@@ -297,6 +308,19 @@ fp_print_class_init (FpPrintClass *klass)
                           "The raw data for internal use only",
                           G_VARIANT_TYPE_ANY,
                           NULL,
+                          G_PARAM_STATIC_STRINGS | G_PARAM_READWRITE);
+
+  /**
+   * FpPrint::fpi-prints: (skip)
+   *
+   * This property is only for internal purposes.
+   *
+   * Stability: private
+   */
+  properties[PROP_FPI_PRINTS] =
+    g_param_spec_pointer ("fpi-prints",
+                          "Prints",
+                          "Prints for internal use only",
                           G_PARAM_STATIC_STRINGS | G_PARAM_READWRITE);
 
   g_object_class_install_properties (object_class, N_PROPS, properties);
@@ -657,6 +681,8 @@ fp_print_serialize (FpPrint *print,
   g_variant_builder_open (&builder, G_VARIANT_TYPE_VARDICT);
   g_variant_builder_close (&builder);
 
+  GPtrArray * to_free = g_ptr_array_new ();
+
   /* Insert NBIS print data for type NBIS, otherwise the GVariant directly */
   if (print->type == FPI_PRINT_NBIS)
     {
@@ -691,6 +717,26 @@ fp_print_serialize (FpPrint *print,
       g_variant_builder_close (&nested);
       g_variant_builder_add (&builder, "v", g_variant_builder_end (&nested));
     }
+  else if (print->type == FPI_PRINT_SIGFM)
+    {
+      GVariantBuilder nested =
+        G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE ("(a(ay))"));
+      g_variant_builder_open (&nested, G_VARIANT_TYPE ("a(ay)"));
+      for (int i = 0; i != print->prints->len; ++i)
+        {
+          g_variant_builder_open (&nested, G_VARIANT_TYPE ("(ay)"));
+          SigfmImgInfo * info = g_ptr_array_index (print->prints, i);
+          int slen;
+          unsigned char * serialized = sigfm_serialize_binary (info, &slen);
+          g_variant_builder_add_value (
+            &nested, g_variant_new_fixed_array (G_VARIANT_TYPE_BYTE,
+                                                serialized, slen, 1));
+          g_ptr_array_add (to_free, serialized);
+          g_variant_builder_close (&nested);
+        }
+      g_variant_builder_close (&nested);
+      g_variant_builder_add (&builder, "v", g_variant_builder_end (&nested));
+    }
   else
     {
       g_variant_builder_add (&builder, "v", g_variant_new_variant (print->data));
@@ -719,6 +765,7 @@ fp_print_serialize (FpPrint *print,
 
   g_variant_get_data (result);
   g_variant_store (result, (*data) + 3);
+  g_clear_object (&to_free);
 
   return TRUE;
 }
@@ -845,6 +892,35 @@ fp_print_deserialize (const guchar *data,
           memcpy (xyt->thetacol, thetacol, sizeof (xcol[0]) * xlen);
 
           g_ptr_array_add (result->prints, g_steal_pointer (&xyt));
+        }
+    }
+  else if (type == FPI_PRINT_SIGFM)
+    {
+      g_autoptr(GVariant) prints = g_variant_get_child_value (print_data, 0);
+      guint i;
+
+      result = g_object_new (FP_TYPE_PRINT, "driver", driver, "device-id",
+                             device_id, "device-stored", device_stored, NULL);
+      g_object_ref_sink (result);
+      fpi_print_set_type (result, FPI_PRINT_SIGFM);
+
+      for (i = 0; i < g_variant_n_children (prints); i++)
+        {
+          g_autoptr(GVariant) sigfm_data = NULL;
+
+          sigfm_data = g_variant_get_child_value (prints, i);
+
+          GVariant * child = g_variant_get_child_value (sigfm_data, 0);
+          gsize slen;
+          const unsigned char * serialized =
+            g_variant_get_fixed_array (child, &slen, sizeof (unsigned char));
+          g_variant_unref (child);
+
+          SigfmImgInfo * sigfm_info = sigfm_deserialize_binary (serialized, slen);
+          if (!sigfm_info)
+            goto invalid_format;
+
+          g_ptr_array_add (result->prints, g_steal_pointer (&sigfm_info));
         }
     }
   else if (type == FPI_PRINT_RAW)
