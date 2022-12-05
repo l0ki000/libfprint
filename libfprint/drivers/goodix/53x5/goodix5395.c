@@ -94,6 +94,7 @@ static void fpi_device_goodix53x5_class_init(FpiDeviceGoodix53x5Class *class) {
     image_device_class->activate = run_initialize;
     image_device_class->deactivate = fpi_device_goodix5395_deactivate;
     image_device_class->change_state = fpi_device_goodix5395_change_state;
+    image_device_class->algorithm = FPI_DEVICE_ALGO_SIGFM;
 
     // TODO fpi_device_class_auto_initialize_features(device_class);
     // device_class->features &= ~FP_DEVICE_FEATURE_VERIFY;
