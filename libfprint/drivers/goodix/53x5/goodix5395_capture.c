@@ -27,6 +27,13 @@
 #define SENSOR_WIDTH 108
 #define SENSOR_HEIGHT 88
 
+// this is a number of images sensor is trying to get during one "finger read"
+// used for vertical swipe action to get bigger image from smaller sensors that satisfy standart algorithm
+// This is not needed with new "sigfm" algorithm!
+/***************************************************************************************************/
+// ETREMELY DANGEROUS TO CHANGE THIS DEFINE TO ANY OTHER THAN "1" VALUES, IT'S KNOWN TO BRICK SENSORS
+// see discord "Goodix Fingerprint Linux development" #5935 channel for gory details
+/***************************************************************************************************/
 #define CAPTURE_IMAGE_COUNT 1
 
 enum Goodix5395CaptureState {
