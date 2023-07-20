@@ -1,7 +1,6 @@
-
 #pragma once
 
-#include "opencv2/core/mat.hpp"
+#include <opencv2/core/mat.hpp>
 #include <array>
 #include <cstring>
 #include <stdexcept>
@@ -22,6 +21,7 @@ template<typename T>
 struct deserializer : public std::false_type {
     T deserialize(stream& in);
 };
+
 class stream {
 public:
     stream() = default;
@@ -125,7 +125,7 @@ public:
 
 private:
     std::vector<byte> store_;
-};
+}; // stream
 
 template<>
 struct serializer<cv::Mat> : public std::true_type {

@@ -247,6 +247,9 @@ foreach i : driver_helpers
         libfprint_conf.set10('HAVE_UDEV', true)
 
         optional_deps += gudev_dep
+    elif i == 'goodix_device'
+        openssl_dep = dependency('openssl', required: true)
+        optional_deps += openssl_dep
     endif
 endforeach
 

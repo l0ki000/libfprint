@@ -23,10 +23,9 @@
 #include "binary.hpp"
 #include "img-info.hpp"
 
-#include "opencv2/core/persistence.hpp"
-#include "opencv2/core/types.hpp"
-#include "opencv2/features2d.hpp"
-#include "opencv2/imgcodecs.hpp"
+#include <opencv2/core/persistence.hpp>
+#include <opencv2/core/types.hpp>
+#include <opencv2/features2d.hpp>
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
@@ -34,9 +33,8 @@
 #include <iterator>
 #include <sstream>
 #include <string>
-
-#include <opencv2/opencv.hpp>
 #include <vector>
+#include <set>
 
 namespace bin {
 

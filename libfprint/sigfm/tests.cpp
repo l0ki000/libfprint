@@ -1,5 +1,6 @@
-#include "opencv2/core.hpp"
-#include "opencv2/core/types.hpp"
+#include <opencv2/core.hpp>
+#include <opencv2/core/types.hpp>
+
 #include "sigfm.hpp"
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
@@ -8,9 +9,10 @@
 #include "tests-embedded.hpp"
 
 #include "img-info.hpp"
-#include <opencv2/opencv.hpp>
 
 namespace cv {
+bool operator==(const cv::KeyPoint& lhs, const cv::KeyPoint& rhs);
+
 bool operator==(const cv::KeyPoint& lhs, const cv::KeyPoint& rhs)
 {
     return lhs.angle == rhs.angle && lhs.class_id == rhs.class_id &&
@@ -82,7 +84,7 @@ TEST_SUITE("binary")
 
     TEST_CASE("vector of values can be stored and restored")
     {
-        std::vector inputs = {3, 5, 1, 7};
+        std::vector<int> inputs = {3, 5, 1, 7};
         bin::stream s;
         s << inputs;
 
