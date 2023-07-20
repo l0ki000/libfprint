@@ -143,6 +143,8 @@ driver_sources = {
         [ 'drivers/goodixtls/goodix511.c' ],
     'goodix53x5' :
         [ 'drivers/goodix/53x5/goodix5395.c', 'drivers/goodix/53x5/goodix5395_capture.c', 'drivers/goodix/53x5/goodix53x5_init.c' ],
+    'fpcmoc' :
+        [ 'drivers/fpcmoc/fpc.c' ],
 }
 
 helper_sources = {
@@ -342,7 +344,7 @@ if install_udev_rules
     )
 endif
 
-custom_target('sync-udev-hwdb',
+sync_udev_udb = custom_target('sync-udev-hwdb',
     depends: udev_hwdb_generator,
     output: 'sync-udev-hwdb',
     install: false,
@@ -352,6 +354,8 @@ custom_target('sync-udev-hwdb',
         meson.source_root() / 'data'
     ]
 )
+
+alias_target('sync-udev-hwdb', sync_udev_udb)
 
 supported_devices = executable('fprint-list-supported-devices',
     'fprint-list-supported-devices.c',

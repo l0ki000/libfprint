@@ -1,5 +1,5 @@
 project('libfprint', [ 'c', 'cpp' ],
-    version: '1.94.4',
+    version: '1.94.5',
     license: 'LGPLv2.1+',
     default_options: [
         'buildtype=debugoptimized',
@@ -127,6 +127,7 @@ default_drivers = [
     'goodixtls511',
     'goodix53x5',
     'nb1010',
+    'fpcmoc',
 
     # SPI
     'elanspi',
@@ -336,3 +337,5 @@ pkgconfig.generate(
     subdirs: versioned_libname,
     filebase: versioned_libname,
 )
+
+summary({'Drivers': drivers, }, section: 'Drivers')
