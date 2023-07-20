@@ -7,7 +7,7 @@
 This is an experimental libfprint driver implementation for Goodix drivers.
 
 Currently in the works:
-- 27c6x5110 (80x64 resolution)
+- 27c6:5395 (108x88 resolution)
 
 *LibFPrint is part of the **[FPrint][Website]** project.*
 
