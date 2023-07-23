@@ -120,7 +120,7 @@ on_device_opened (FpDevice *dev, GAsyncResult *res, void *user_data)
       return;
     }
 
-  g_print ("Opened device. ");
+  g_print ("Opened device.\n");
 
   start_capture (dev, capture_data);
 }
