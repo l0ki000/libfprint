@@ -310,16 +310,21 @@ fp_image_sigfm_extract_thread_func (GTask * task, void * src_obj,
                                   GCancellable * cancellable)
 {
   ExtractSigfmData * data = task_data;
-  GTimer * timer = g_timer_new ();
+  const guint keypoints_lwm = 25;
 
+  GTimer * timer = g_timer_new ();
   data->sigfm_info = sigfm_extract (data->image, data->width, data->height);
   g_timer_stop (timer);
   fp_dbg ("sigfm extract completed in %f secs", g_timer_elapsed (timer, NULL));
   g_timer_destroy (timer);
-  if (sigfm_keypoints_count (data->sigfm_info) < 25)
+  
+  g_debug("sigfm found keypoints: %u", sigfm_keypoints_count (data->sigfm_info));
+
+  if (sigfm_keypoints_count (data->sigfm_info) < keypoints_lwm)
     {
-      g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_FAILED,
-                               "No enough keypoints found");
+      g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_PARTIAL_INPUT,
+                               "Not enough keypoints found %d, while %d needed", 
+                               sigfm_keypoints_count (data->sigfm_info), keypoints_lwm);
       g_object_unref (task);
       return;
     }

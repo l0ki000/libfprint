@@ -277,8 +277,6 @@ fpi_assemble_frames (struct fpi_frame_asmbl_ctx *ctx,
       height += fpi_frame->delta_y;
     }
 
-  fp_dbg ("height is %d", height);
-
   if (height < 0)
     {
       reverse = TRUE;
@@ -308,6 +306,7 @@ fpi_assemble_frames (struct fpi_frame_asmbl_ctx *ctx,
 
       aes_blit_stripe (ctx, img, fpi_frame, x, y);
     }
+  g_debug("Assembled img height: %u, width: %u from %u stripes.", img->height, img->width, g_slist_length(stripes));
 
   return img;
 }
