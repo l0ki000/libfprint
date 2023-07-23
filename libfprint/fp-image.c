@@ -322,8 +322,8 @@ fp_image_sigfm_extract_thread_func (GTask * task, void * src_obj,
 
   if (sigfm_keypoints_count (data->sigfm_info) < keypoints_lwm)
     {
-      g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_PARTIAL_INPUT,
-                               "Not enough keypoints found %d, while %d needed", 
+      g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                               "Not enough keypoints found %u, while %u needed", 
                                sigfm_keypoints_count (data->sigfm_info), keypoints_lwm);
       g_object_unref (task);
       return;
