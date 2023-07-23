@@ -1,6 +1,15 @@
+// SIGFM algorithm for libfprint
+
+// Copyright (C) 2022 Matthieu CHARETTE <matthieu.charette@gmail.com>
+// Copyright (c) 2022 Natasha England-Elbro <natasha@natashaee.me>
+// Copyright (c) 2022 Timur Mangliev <tigrmango@gmail.com>
+//
+// SPDX-License-Identifier: LGPL-2.1-or-later
+//
+
 #pragma once
 
-#include <opencv2/core/mat.hpp>
+#include "opencv2/core/mat.hpp"
 #include <array>
 #include <cstring>
 #include <stdexcept>
@@ -12,16 +21,15 @@ using byte = unsigned char;
 
 class stream;
 
-template<typename T>
+template<typename T, typename EnableIf = void>
 struct serializer : public std::false_type {
     void serialize(const T& m, stream& out);
 };
 
-template<typename T>
+template<typename T, typename EnableIf = void>
 struct deserializer : public std::false_type {
     T deserialize(stream& in);
 };
-
 class stream {
 public:
     stream() = default;
@@ -49,28 +57,7 @@ public:
         v = deserializer<T>::deserialize(*this);
         return *this;
     }
-    template<typename T, std::enable_if_t<std::is_trivial_v<T>, bool> = true>
-    constexpr stream& operator<<(T v)
-    {
-        using seg_store = std::array<byte, sizeof(T)>;
-        alignas(T) seg_store s = {};
-        std::memcpy(s.data(), &v, sizeof(T));
-        stream::write(s.begin(), s.end());
-        return *this;
-    }
 
-    template<typename T, std::enable_if_t<std::is_trivial_v<T>, bool> = true>
-    constexpr stream& operator>>(T& v)
-    {
-        using seg_store = std::array<byte, sizeof(T)>;
-        alignas(T) seg_store s = {};
-        if (store_.size() < s.size()) {
-            throw std::runtime_error{"tried to extract from too small stream"};
-        }
-        stream::read(s.begin(), s.end());
-        memcpy(&v, s.data(), sizeof(T));
-        return *this;
-    }
     template<
         typename Iter,
         std::enable_if_t<std::is_same_v<typename std::iterator_traits<
@@ -111,6 +98,9 @@ public:
                          bool> = true>
     constexpr stream& read(Iter&& begin, std::size_t dist)
     {
+        if (dist > store_.size()) {
+            throw std::runtime_error{"trying to read too much from a stream. wanted: " + std::to_string(dist) + " available: " + std::to_string(store_.size())};
+        }
         std::copy(store_.begin(), store_.begin() + dist, begin);
         store_.erase(store_.begin(), store_.begin() + dist);
         return *this;
@@ -125,7 +115,30 @@ public:
 
 private:
     std::vector<byte> store_;
-}; // stream
+};
+
+template<typename T>
+struct serializer<T, std::enable_if_t<std::is_trivial_v<T>>> : public std::true_type {
+    static void serialize(T v, stream& out) {
+        using seg_store = std::array<byte, sizeof(T)>;
+        alignas(T) seg_store s = {};
+        std::memcpy(s.data(), &v, sizeof(T));
+        out.write(s.begin(), s.end());
+    }
+};
+
+
+template<typename T>
+struct deserializer<T, std::enable_if_t<std::is_trivial_v<T>>> : public std::true_type {
+    static T deserialize(stream& in) {
+        alignas(T) std::array<byte, sizeof(T)> s = {};
+        in.read(s.begin(), s.size());
+        T v;
+        std::memcpy(&v, s.data(), s.size());
+        return v;
+    }
+};
+
 
 template<>
 struct serializer<cv::Mat> : public std::true_type {
@@ -186,8 +199,9 @@ struct deserializer<cv::KeyPoint> : public std::true_type {
     }
 };
 
+
 template<typename T>
-struct serializer<std::vector<T>> : public std::true_type {
+struct serializer<std::vector<T>, std::enable_if_t<serializer<T>::value>> : public std::true_type {
     static void serialize(const std::vector<T>& vs, stream& out)
     {
         out << static_cast<std::size_t>(vs.size());
@@ -197,7 +211,7 @@ struct serializer<std::vector<T>> : public std::true_type {
 };
 
 template<typename T>
-struct deserializer<std::vector<T>> : public std::true_type {
+struct deserializer<std::vector<T>, std::enable_if_t<deserializer<T>::value>> : public std::true_type {
     static std::vector<T> deserialize(stream& in)
     {
         std::size_t size;

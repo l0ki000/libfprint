@@ -41,30 +41,30 @@ struct usb_action
 };
 
 #define SEND(ENDPOINT, COMMAND) \
-  { \
-    .type = ACTION_SEND, \
-    .endpoint = ENDPOINT, \
-    .name = #COMMAND, \
-    .size = sizeof (COMMAND), \
-    .data = COMMAND \
-  },
+        { \
+          .type = ACTION_SEND, \
+          .endpoint = ENDPOINT, \
+          .name = #COMMAND, \
+          .size = sizeof (COMMAND), \
+          .data = COMMAND \
+        },
 
 #define RECV(ENDPOINT, SIZE) \
-  { \
-    .type = ACTION_RECEIVE, \
-    .endpoint = ENDPOINT, \
-    .size = SIZE, \
-    .data = NULL \
-  },
+        { \
+          .type = ACTION_RECEIVE, \
+          .endpoint = ENDPOINT, \
+          .size = SIZE, \
+          .data = NULL \
+        },
 
 #define RECV_CHECK(ENDPOINT, SIZE, EXPECTED) \
-  { \
-    .type = ACTION_RECEIVE, \
-    .endpoint = ENDPOINT, \
-    .size = SIZE, \
-    .data = EXPECTED, \
-    .correct_reply_size = sizeof (EXPECTED) \
-  },
+        { \
+          .type = ACTION_RECEIVE, \
+          .endpoint = ENDPOINT, \
+          .size = SIZE, \
+          .data = EXPECTED, \
+          .correct_reply_size = sizeof (EXPECTED) \
+        },
 
 struct usbexchange_data
 {
@@ -894,7 +894,7 @@ fpi_device_vfs5011_class_init (FpDeviceVfs5011Class *klass)
   img_class->activate = dev_activate;
   img_class->deactivate = dev_deactivate;
 
-  img_class->bz3_threshold = 20;
+  img_class->score_threshold = 20;
 
   img_class->img_width = VFS5011_IMAGE_WIDTH;
   img_class->img_height = -1;

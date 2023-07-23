@@ -1,7 +1,14 @@
-#include <opencv2/core.hpp>
-#include <opencv2/core/types.hpp>
+// SIGFM algorithm for libfprint
 
-#include "sigfm.hpp"
+// Copyright (C) 2022 Matthieu CHARETTE <matthieu.charette@gmail.com>
+// Copyright (c) 2022 Natasha England-Elbro <natasha@natashaee.me>
+// Copyright (c) 2022 Timur Mangliev <tigrmango@gmail.com>
+//
+// SPDX-License-Identifier: LGPL-2.1-or-later
+//
+#include "opencv2/core.hpp"
+#include "opencv2/core/types.hpp"
+#include "sigfm.h"
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
@@ -9,10 +16,11 @@
 #include "tests-embedded.hpp"
 
 #include "img-info.hpp"
+#include <opencv2/opencv.hpp>
+
+#include<vector>
 
 namespace cv {
-bool operator==(const cv::KeyPoint& lhs, const cv::KeyPoint& rhs);
-
 bool operator==(const cv::KeyPoint& lhs, const cv::KeyPoint& rhs)
 {
     return lhs.angle == rhs.angle && lhs.class_id == rhs.class_id &&
@@ -81,10 +89,17 @@ TEST_SUITE("binary")
         CHECK(std::equal(input.datastart, input.dataend, output.datastart,
                          output.dataend));
     }
+    TEST_CASE("taking more than giving to a stream will cause an exception") {
+        bin::stream s;
+        s << 5;
+        int v1;
+        s >> v1;
+        CHECK_THROWS(s >> v1);
+    }
 
     TEST_CASE("vector of values can be stored and restored")
     {
-        std::vector<int> inputs = {3, 5, 1, 7};
+        std::vector inputs = {3, 5, 1, 7};
         bin::stream s;
         s << inputs;
 
@@ -139,5 +154,7 @@ TEST_SUITE("binary")
             info2->descriptors.datastart, info2->descriptors.dataend));
         sigfm_free_info(info);
         sigfm_free_info(info2);
+        free(bin_data);
+        free(bin_data2);
     }
 }

@@ -162,9 +162,9 @@ enum {
 
 /* Dump buffer for debug */
 #define dump_buffer(buf) \
-  fp_dbg ("%02x %02x %02x %02x %02x %02x %02x %02x", \
-          buf[6], buf[7], buf[8], buf[9], buf[10], buf[11], buf[12], buf[13] \
-         )
+        fp_dbg ("%02x %02x %02x %02x %02x %02x %02x %02x", \
+                buf[6], buf[7], buf[8], buf[9], buf[10], buf[11], buf[12], buf[13] \
+               )
 
 /* Callback of asynchronous send */
 static void
@@ -1363,7 +1363,7 @@ fpi_device_vfs101_class_init (FpDeviceVfs101Class *klass)
   img_class->activate = dev_activate;
   img_class->deactivate = dev_deactivate;
 
-  img_class->bz3_threshold = 24;
+  img_class->score_threshold = 24;
 
   img_class->img_width = VFS_IMG_WIDTH;
   img_class->img_height = -1;

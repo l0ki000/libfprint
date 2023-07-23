@@ -1,31 +1,20 @@
 // SIGFM algorithm for libfprint
 
 // Copyright (C) 2022 Matthieu CHARETTE <matthieu.charette@gmail.com>
-// Copyright (c) 2022 Natasha England-Elbro <ashenglandelbro@protonmail.com>
+// Copyright (c) 2022 Natasha England-Elbro <natasha@natashaee.me>
 // Copyright (c) 2022 Timur Mangliev <tigrmango@gmail.com>
-
-// This library is free software; you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-
-// You should have received a copy of the GNU Lesser General Public
-// License along with this library; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+//
+// SPDX-License-Identifier: LGPL-2.1-or-later
 //
 
-#include "sigfm.hpp"
+#include "sigfm.h"
 #include "binary.hpp"
 #include "img-info.hpp"
 
-#include <opencv2/core/persistence.hpp>
-#include <opencv2/core/types.hpp>
-#include <opencv2/features2d.hpp>
+#include "opencv2/core/persistence.hpp"
+#include "opencv2/core/types.hpp"
+#include "opencv2/features2d.hpp"
+#include "opencv2/imgcodecs.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
@@ -114,17 +103,21 @@ SigfmImgInfo* sigfm_deserialize_binary(const unsigned char* bytes, int len)
 
 SigfmImgInfo* sigfm_extract(const SigfmPix* pix, int width, int height)
 {
-    cv::Mat img;
-    img.create(height, width, CV_8UC1);
-    std::memcpy(img.data, pix, width * height);
-    const auto roi = cv::Mat::ones(cv::Size{img.size[1], img.size[0]}, CV_8UC1);
-    std::vector<cv::KeyPoint> pts;
+    try {
+        cv::Mat img;
+        img.create(height, width, CV_8UC1);
+        std::memcpy(img.data, pix, width * height);
+        const auto roi = cv::Mat::ones(cv::Size{img.size[1], img.size[0]}, CV_8UC1);
+        std::vector<cv::KeyPoint> pts;
 
-    cv::Mat descs;
-    cv::SIFT::create()->detectAndCompute(img, roi, pts, descs);
+        cv::Mat descs;
+        cv::SIFT::create()->detectAndCompute(img, roi, pts, descs);
 
-    auto* info = new SigfmImgInfo{pts, descs};
-    return info;
+        auto* info = new SigfmImgInfo{pts, descs};
+        return info;
+    } catch(...) {
+        return nullptr;
+    }
 }
 
 int sigfm_match_score(SigfmImgInfo* frame, SigfmImgInfo* enrolled)

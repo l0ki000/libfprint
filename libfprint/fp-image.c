@@ -18,7 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "sigfm/sigfm.hpp"
+#include "sigfm/sigfm.h"
 #define FP_COMPONENT "image"
 
 #include "fpi-compat.h"
@@ -173,7 +173,7 @@ typedef struct
 
 typedef struct
 {
-  SigfmImgInfo        * sigfm_info;
+  SigfmImgInfo      * sigfm_info;
   guchar            * image;
   gint                width;
   gint                height;
@@ -199,7 +199,7 @@ fp_image_sigfm_extract_free (ExtractSigfmData * data)
 
 static void
 fp_image_sigfm_extract_cb (GObject * source_object, GAsyncResult * res,
-                         gpointer user_data)
+                           gpointer user_data)
 {
   GTask * task = G_TASK (res);
   FpImage * image;
@@ -306,20 +306,26 @@ invert_colors (guint8 *data, gint width, gint height)
 
 static void
 fp_image_sigfm_extract_thread_func (GTask * task, void * src_obj,
-                                  void * task_data,
-                                  GCancellable * cancellable)
+                                    void * task_data,
+                                    GCancellable * cancellable)
 {
   ExtractSigfmData * data = task_data;
-  const guint keypoints_lwm = 25;
-
   GTimer * timer = g_timer_new ();
+
   data->sigfm_info = sigfm_extract (data->image, data->width, data->height);
   g_timer_stop (timer);
   fp_dbg ("sigfm extract completed in %f secs", g_timer_elapsed (timer, NULL));
   g_timer_destroy (timer);
-  
-  g_debug("sigfm found keypoints: %u", sigfm_keypoints_count (data->sigfm_info));
 
+  if (!data->sigfm_info)
+    {
+      fp_err ("extract sigfm info failed");
+      g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_FAILED, "SIGFM scan failed");
+      g_object_unref (task);
+      return;
+    }
+
+  const guint keypoints_lwm = 25;
   if (sigfm_keypoints_count (data->sigfm_info) < keypoints_lwm)
     {
       g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
@@ -524,7 +530,7 @@ fp_image_get_sigfm_info (FpImage * self)
  */
 void
 fp_image_extract_sigfm_info (FpImage * self, GCancellable * cancellable,
-                           GAsyncReadyCallback callback, gpointer user_data)
+                             GAsyncReadyCallback callback, gpointer user_data)
 {
   GTask * task;
   ExtractSigfmData * data = g_new0 (ExtractSigfmData, 1);
