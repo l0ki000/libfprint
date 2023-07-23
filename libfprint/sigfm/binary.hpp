@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include "opencv2/core/mat.hpp"
+#include <opencv2/core/mat.hpp>
 #include <array>
 #include <cstring>
 #include <stdexcept>

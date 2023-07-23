@@ -6,8 +6,8 @@
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-#include "opencv2/core.hpp"
-#include "opencv2/core/types.hpp"
+#include <opencv2/core.hpp>
+#include <opencv2/core/types.hpp>
 #include "sigfm.h"
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
@@ -16,7 +16,6 @@
 #include "tests-embedded.hpp"
 
 #include "img-info.hpp"
-#include <opencv2/opencv.hpp>
 
 #include<vector>
 

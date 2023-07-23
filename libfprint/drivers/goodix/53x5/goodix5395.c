@@ -85,7 +85,7 @@ static void fpi_device_goodix53x5_class_init(FpiDeviceGoodix53x5Class *class) {
 
     device_class->scan_type = FP_SCAN_TYPE_PRESS;
 
-    image_device_class->bz3_threshold = 24;
+    image_device_class->score_threshold = 24;
     image_device_class->img_width = 88;
     image_device_class->img_height = 108;
 
